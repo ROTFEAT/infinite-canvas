@@ -1,0 +1,27 @@
+# Trusted single-instance deployment. Public access requires an authenticated reverse proxy.
+services:
+  app:
+    image: infinite-canvas:server-config
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${CANVAS_BIND_IP:-127.0.0.1}:${CANVAS_PORT:-3000}:3000"
+    environment:
+      SERVER_CONFIG_ENABLED: "true"
+    volumes:
+      - ./nginx.instance-config.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - instance-config
+    restart: unless-stopped
+  instance-config:
+    build:
+      context: .
+      dockerfile: Dockerfile.instance-config
+    environment:
+      INSTANCE_CONFIG_ORIGIN: "${INSTANCE_CONFIG_ORIGIN:?Set the exact browser origin, e.g. http://localhost:3000}"
+    volumes:
+      - instance-config-data:/data
+    restart: unless-stopped
+volumes:
+  instance-config-data:

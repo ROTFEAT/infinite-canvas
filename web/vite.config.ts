@@ -55,6 +55,9 @@ function localCollabPlugin(): Plugin {
 export default defineConfig({
     base: process.env.VITE_BASE || "/",
     plugins: [react(), localPluginsManifest(), localCollabPlugin()],
+    server: process.env.VITE_SERVER_CONFIG_ENABLED === "true" ? {
+        proxy: { "/api/instance-config": "http://127.0.0.1:3003" },
+    } : undefined,
     resolve: {
         alias: {
             "@": resolve(webDir, "src"),

@@ -14,8 +14,14 @@ sanitize_id() {
 GA4_ID=$(sanitize_id "${ANALYTICS_GA4_ID:-}")
 BAIDU_ID=$(sanitize_id "${ANALYTICS_BAIDU_ID:-}")
 
+SERVER_CONFIG_ENABLED_VALUE=false
+if [ "${SERVER_CONFIG_ENABLED:-false}" = "true" ]; then
+    SERVER_CONFIG_ENABLED_VALUE=true
+fi
+
 cat > /usr/share/nginx/html/config.js <<EOF
 window.__RUNTIME_CONFIG__ = {
+  SERVER_CONFIG_ENABLED: "$SERVER_CONFIG_ENABLED_VALUE",
   ANALYTICS_GA4_ID: "${GA4_ID}",
   ANALYTICS_BAIDU_ID: "${BAIDU_ID}"
 };

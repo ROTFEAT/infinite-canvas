@@ -293,3 +293,7 @@ curl -I http://127.0.0.1:3002/api/collab/network-ip
 curl -sk -I https://canvas.imihoo.com/api/collab/network-ip
 ```
 
+
+## 可选共享实例配置（本 fork）
+
+需要跨浏览器共享渠道、工作流和默认参数时，见 [服务器配置部署说明](docs/SERVER_CONFIG.md)。使用独立 `docker-compose.server-config.yml` 和持久卷；默认静态部署不变。画布/素材和认证凭据不在该共享范围。

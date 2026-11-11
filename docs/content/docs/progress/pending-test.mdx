@@ -5,6 +5,8 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+- 本 fork 可选服务器配置持久化：验证空实例显式初始化、第二个浏览器读取渠道/工作流/默认参数、参数自动保存、容器重建后恢复、网络失败重试及并发修改冲突；确认原纯前端部署不请求配置 API，认证凭据不共享。部署方法见仓库 `docs/SERVER_CONFIG.md`。本地 HTTP 与组件自动化测试已覆盖主要路径，Compose 容器部署仍待目标环境验收。
+
 The current release needs manual verification in these areas:
 
 - Image Workbench Generation Log Deduplication (Issue #18):

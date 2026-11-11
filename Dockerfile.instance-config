@@ -1,0 +1,8 @@
+FROM node:22-alpine
+WORKDIR /app
+COPY web/server/instance-config-server.mjs ./instance-config-server.mjs
+RUN mkdir -p /data && chown node:node /data
+USER node
+ENV CONFIG_HOST=0.0.0.0 CONFIG_PORT=3003 CONFIG_DATA_DIR=/data
+EXPOSE 3003
+CMD ["node", "instance-config-server.mjs"]

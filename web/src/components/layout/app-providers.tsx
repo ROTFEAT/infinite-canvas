@@ -9,6 +9,7 @@ import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 import { useTranslation } from "react-i18next";
 
+import { InstanceConfigGate } from "@/components/layout/instance-config-gate";
 import { ClientRootInit } from "@/components/layout/client-root-init";
 import type { AppLocale } from "@/i18n";
 import { getAntThemeConfig } from "@/lib/app-theme";
@@ -47,7 +48,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
             <ProConfigProvider dark={dark}>
                 <App>
                     <QueryClientProvider client={queryClient}>
-                        <ClientRootInit>{children}</ClientRootInit>
+                        <InstanceConfigGate><ClientRootInit>{children}</ClientRootInit></InstanceConfigGate>
                     </QueryClientProvider>
                 </App>
             </ProConfigProvider>
