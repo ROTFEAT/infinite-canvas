@@ -11,6 +11,7 @@ const emptyCredential = (value, key) => !Object.hasOwn(value, key) || value[key]
 
 function validConfig(config) {
     return isObject(config) && !Object.hasOwn(config, 'webdav') && emptyCredential(config, 'apiKey') &&
+        Array.isArray(config.models) && config.models.every(model => typeof model === 'string') &&
         Array.isArray(config.channels) && config.channels.every(channel =>
             isObject(channel) && typeof channel.id === 'string' && typeof channel.name === 'string' &&
             emptyCredential(channel, 'apiKey') && emptyCredential(channel, 'comfyuiProxyToken') &&

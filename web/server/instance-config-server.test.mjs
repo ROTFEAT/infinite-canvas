@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, rm, stat, mkdir, chmod } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createInstanceConfigServer } from './instance-config-server.mjs';
 
 const origin = 'https://canvas.example.test';
-const config = { channels: [{ id: 'local', name: 'Local', models: [], apiKey: '', comfyuiProxyToken: '', workflows: [{ json: { node: { inputs: { prompt: 'retained' } } } }] }], apiKey: '' };
+const config = { models: [], channels: [{ id: 'local', name: 'Local', models: [], apiKey: '', comfyuiProxyToken: '', workflows: [{ json: { node: { inputs: { prompt: 'retained' } } } }] }], apiKey: '' };
 async function fixture(t, options = {}) {
     const dataDir = await mkdtemp(join(tmpdir(), 'instance-config-'));
     let server;
@@ -20,7 +21,7 @@ async function fixture(t, options = {}) {
     async function stop() { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
     let url = await start();
     t.after(async () => { await stop(); await chmod(dataDir, 0o700); await rm(dataDir, { recursive: true, force: true }); });
-    return { dataDir, get: (headers = {}) => fetch(url, { headers }), put: (body, headers = {}) => fetch(url, { method: 'PUT', headers: { Origin: origin, 'Content-Type': 'application/json', 'X-Instance-Config': '1', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) }), restart: async () => { await stop(); url = await start(); }, request: (path, opts) => fetch(new URL(path, url), opts) };
+    return { dataDir, get url() { return url; }, get: (headers = {}) => fetch(url, { headers }), put: (body, headers = {}) => fetch(url, { method: 'PUT', headers: { Origin: origin, 'Content-Type': 'application/json', 'X-Instance-Config': '1', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) }), restart: async () => { await stop(); url = await start(); }, request: (path, opts) => fetch(new URL(path, url), opts) };
 }
 
 test('empty read, atomic persisted envelope, permissions and restart', async t => {
@@ -50,12 +51,41 @@ test('concurrent compare-and-swap allows exactly one update', async t => {
 
 test('invalid payloads and credentials are rejected', async t => {
     const f = await fixture(t);
-    for (const bad of [null, [], {}, { channels: null }, { channels: [null] }, { channels: [{ id: 1, name: 'x', models: [] }] }, { channels: [{ id: 'x', name: 'x', models: null }] }, { channels: [{ id: 'x', name: 'x', models: [null] }] }, { ...config, apiKey: 'secret' }, { ...config, apiKey: null }, { ...config, webdav: {} }, ...['apiKey', 'comfyuiProxyToken'].flatMap(key => ['secret', false, 1, null, {}].map(value => ({ channels: [{ ...config.channels[0], [key]: value }] })))]) {
+    for (const bad of [null, [], {}, { ...config, channels: null }, { ...config, channels: [null] }, { ...config, channels: [{ id: 1, name: 'x', models: [] }] }, { ...config, channels: [{ id: 'x', name: 'x', models: null }] }, { ...config, channels: [{ id: 'x', name: 'x', models: [null] }] }, { ...config, apiKey: 'secret' }, { ...config, apiKey: null }, { ...config, webdav: {} }, ...['apiKey', 'comfyuiProxyToken'].flatMap(key => ['secret', false, 1, null, {}].map(value => ({ ...config, channels: [{ ...config.channels[0], [key]: value }] })))]) {
         assert.equal((await f.put({ baseRevision: 0, config: bad })).status, 400, JSON.stringify(bad));
     }
     for (const baseRevision of [-1, 0.5, '0', null, Number.MAX_SAFE_INTEGER + 1]) assert.equal((await f.put({ baseRevision, config })).status, 400);
     for (const body of ['{', 'null', '[]', '{}']) assert.equal((await f.put(body)).status, 400);
     assert.equal((await f.put({ baseRevision: 0, config })).status, 200);
+});
+
+test('top-level models must be a string array', async t => {
+    const f = await fixture(t);
+    for (const models of [undefined, null, {}, 'model', [null], [1], [{}]]) {
+        assert.equal((await f.put({ baseRevision: 0, config: { ...config, models } })).status, 400);
+    }
+    assert.equal((await f.put({ baseRevision: 0, config: { ...config, models: ['model'] } })).status, 200);
+});
+
+test('oversized chunked uploads retain the saved revision and allow subsequent writes', async t => {
+    const f = await fixture(t);
+    assert.equal((await f.put({ baseRevision: 0, config })).status, 200);
+    const status = await new Promise((resolve, reject) => {
+        const req = httpRequest(f.url, { method: 'PUT', headers: { Origin: origin, 'Content-Type': 'application/json', 'X-Instance-Config': '1', 'Transfer-Encoding': 'chunked' } }, res => {
+            res.resume();
+            res.on('end', () => resolve(res.statusCode));
+        });
+        req.on('error', reject);
+        assert.equal(req.hasHeader('Content-Length'), false);
+        req.write('{"baseRevision":1,"config":{"models":[],"channels":[],"padding":"');
+        for (let i = 0; i < 81; i++) req.write('x'.repeat(64 * 1024));
+        req.end('"}}');
+    });
+    assert.equal(status, 413);
+    assert.equal((await (await f.get()).json()).revision, 1);
+    assert.equal(JSON.parse(await readFile(join(f.dataDir, 'instance-config.json'), 'utf8')).revision, 1);
+    assert.equal((await f.put({ baseRevision: 1, config })).status, 200);
+    assert.equal((await (await f.get()).json()).revision, 2);
 });
 
 test('CSRF boundary, fixed route and no CORS', async t => {
