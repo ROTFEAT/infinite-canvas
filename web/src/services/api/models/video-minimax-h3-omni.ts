@@ -288,6 +288,44 @@ export const videoMinimaxH3OmniInt8SelfLiftProfile: WorkflowModelProfile = {
     },
 };
 
+/** 固定 NVFP4 底模、20 步无 LoRA 的人物多素材参考预设。 */
+export const videoMinimaxH3Ref2vaNvfp4Profile: WorkflowModelProfile = {
+    id: "h3-ref2va-nvfp4-community20",
+    name: "H3 REF2VA · 人物多素材参考 · 20步",
+    capability: "video",
+    protocol: "comfyui",
+    category: "omniVideo",
+    steps: 20,
+    capabilityConfig: {
+        version: 1,
+        references: {
+            promptMaxChars: 20000,
+            minImages: 0,
+            maxImages: 9,
+            maskSupported: false,
+            minVideos: 0,
+            maxVideos: 3,
+            maxAudios: 3,
+        },
+        size: {
+            parameter: "size",
+            values: MINIMAX_H3_SIZES,
+            default: getDslMiddleSize(MINIMAX_H3_SIZES, "16:9"),
+            allowCustom: false,
+        },
+        duration: {
+            selection: "range",
+            min: 1,
+            max: 15,
+            step: 1,
+            tags: [5, 10, 15],
+            default: 5,
+        },
+    },
+    slotMapping: OMNI_SLOT_MAPPING,
+    description: "H3 REF2VA NVFP4 人物多素材参考，固定 20 步、无 LoRA，参考图尺寸由原生 match 模式处理。",
+};
+
 /**
  * 历史别名兼容
  */

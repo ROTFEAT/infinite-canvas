@@ -11,6 +11,7 @@ import {
     videoMinimaxH3OmniInt8PikaProfile,
     videoMinimaxH3OmniInt8SelfLiftProfile,
     videoMinimaxH3OmniProfile,
+    videoMinimaxH3Ref2vaNvfp4Profile,
     MINIMAX_H3_SIZES,
 } from "./video-minimax-h3-omni";
 import {
@@ -50,7 +51,7 @@ export * from "./audio-models";
 export * from "./constraint-engine";
 
 /**
- * 系统内置视频工作流模型清单（4 款 FP8 + 6 款 INT8 量化模型）
+ * 系统内置视频工作流模型清单（4 款 FP8 + 6 款 INT8 + 1 款 NVFP4）
  * 顺序敏感：FP8 4步 PDMD 必须首位，作为视频节点的默认回退模型
  */
 export const BUILTIN_VIDEO_WORKFLOW_MODELS: WorkflowModelProfile[] = [
@@ -64,6 +65,7 @@ export const BUILTIN_VIDEO_WORKFLOW_MODELS: WorkflowModelProfile[] = [
     videoMinimaxH3FrameInt8PikaProfile,
     videoMinimaxH3OmniInt8SelfLiftProfile,
     videoMinimaxH3FrameInt8SelfLiftProfile,
+    videoMinimaxH3Ref2vaNvfp4Profile,
 ];
 
 /**
@@ -227,6 +229,7 @@ export function resolveVideoModelIdForMode(
 ): string {
     const fallback = `${nextMode}-video-minimax-h3-fp8-4step-pdmd`;
     const currentProfile = getModelProfile(currentModelId);
+    if (currentProfile?.id === videoMinimaxH3Ref2vaNvfp4Profile.id && nextMode === "omni") return currentProfile.id;
     const family = VIDEO_MODEL_ID_PATTERN.exec(currentProfile?.id ?? "");
     if (!family) return fallback;
 
@@ -240,6 +243,7 @@ export function resolveVideoModelIdForMode(
  */
 export function resolveModelIdFromWorkflowId(workflowId: string | undefined): string | undefined {
     if (!workflowId) return undefined;
+    if (workflowId === videoMinimaxH3Ref2vaNvfp4Profile.id) return workflowId;
     const videoMatch = VIDEO_MODEL_ID_SEARCH_PATTERN.exec(workflowId)?.[0];
     if (videoMatch && BUILTIN_WORKFLOW_MODELS.some((m) => m.id === videoMatch)) {
         return videoMatch;
@@ -278,6 +282,7 @@ export function resolveModelIdFromWorkflowId(workflowId: string | undefined): st
  */
 export function resolveVideoModelIdFromWorkflowId(workflowId: string | undefined): string | undefined {
     if (!workflowId) return undefined;
+    if (workflowId === videoMinimaxH3Ref2vaNvfp4Profile.id) return workflowId;
     const found = VIDEO_MODEL_ID_SEARCH_PATTERN.exec(workflowId)?.[0];
     if (!found) return undefined;
     return BUILTIN_WORKFLOW_MODELS.some((m) => m.id === found) ? found : undefined;

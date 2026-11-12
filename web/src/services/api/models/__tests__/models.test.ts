@@ -30,9 +30,9 @@ import {
     parseImageSizeTierAndRatio,
 } from "../index";
 
-describe("Workflow Model Profiles (MiniMax H3 10 Video Models)", () => {
-    it("registers 4 FP8 + 6 INT8 models and excludes BF16", () => {
-        expect(BUILTIN_VIDEO_WORKFLOW_MODELS.length).toBe(10);
+describe("Workflow Model Profiles (MiniMax H3 11 Video Models)", () => {
+    it("registers 4 FP8 + 6 INT8 + 1 NVFP4 models and excludes BF16", () => {
+        expect(BUILTIN_VIDEO_WORKFLOW_MODELS.length).toBe(11);
         expect(BUILTIN_VIDEO_WORKFLOW_MODELS.map((m) => m.id)).toEqual([
             "omni-video-minimax-h3-fp8-4step-pdmd",
             "omni-video-minimax-h3-fp8",
@@ -44,6 +44,7 @@ describe("Workflow Model Profiles (MiniMax H3 10 Video Models)", () => {
             "frame-video-minimax-h3-int8-6step-pika",
             "omni-video-minimax-h3-int8-6step-selflift",
             "frame-video-minimax-h3-int8-6step-selflift",
+            "h3-ref2va-nvfp4-community20",
         ]);
 
         // BF16 models should be completely purged
@@ -233,7 +234,7 @@ describe("Workflow Model Profiles (MiniMax H3 10 Video Models)", () => {
 
     it("lists models by capability", () => {
         const videoModels = listModelsByCapability("video");
-        expect(videoModels.length).toBe(10);
+        expect(videoModels.length).toBe(11);
         expect(videoModels.map((m) => m.id)).toEqual([
             "omni-video-minimax-h3-fp8-4step-pdmd",
             "omni-video-minimax-h3-fp8",
@@ -245,6 +246,7 @@ describe("Workflow Model Profiles (MiniMax H3 10 Video Models)", () => {
             "frame-video-minimax-h3-int8-6step-pika",
             "omni-video-minimax-h3-int8-6step-selflift",
             "frame-video-minimax-h3-int8-6step-selflift",
+            "h3-ref2va-nvfp4-community20",
         ]);
 
         const imageModels = listModelsByCapability("image");

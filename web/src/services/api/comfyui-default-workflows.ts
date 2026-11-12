@@ -20,6 +20,8 @@ import audioMinimaxMusic3Json from "@/assets/workflows/audio_minimax_music_3_api
 import videoH3FaceRefineJson from "@/assets/workflows/video_h3_face_refine_api.json";
 import videoDepthReshotJson from "@/assets/workflows/video_depth_reshot_api.json";
 
+import ref2vaNvfp4Json from "../../../../Comfy/Comfy-Api/workflows/h3-ref2va-nvfp4-20step.json";
+
 // Built-in single workflow definitions
 export const DEFAULT_BUILTIN_COMFYUI_DEPTH_VIDEO_WORKFLOW: ComfyuiWorkflow = {
     name: "ReShot 深度视频提取",
@@ -102,6 +104,13 @@ export const DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_SELFLIFT_WORKFLOW: ComfyuiWorkfl
     isBuiltin: true,
 };
 
+export const DEFAULT_BUILTIN_COMFYUI_VIDEO_REF2VA_NVFP4_WORKFLOW: ComfyuiWorkflow = {
+    name: "H3 REF2VA · 人物多素材参考 · 20步",
+    json: ref2vaNvfp4Json as Record<string, unknown>,
+    createdAt: 0,
+    isBuiltin: true,
+};
+
 export const DEFAULT_BUILTIN_COMFYUI_VIDEO_WORKFLOW: ComfyuiWorkflow = DEFAULT_BUILTIN_COMFYUI_VIDEO_INT8_SELFLIFT_WORKFLOW;
 
 export const DEFAULT_BUILTIN_COMFYUI_FRAME_VIDEO_20STEP_WORKFLOW: ComfyuiWorkflow = {
@@ -172,6 +181,8 @@ export const DEFAULT_COMFYUI_FACE_REFINE_WORKFLOW = DEFAULT_BUILTIN_COMFYUI_FACE
 export function getWorkflowForModelProfile(modelId?: string): ComfyuiWorkflow | undefined {
     if (!modelId) return undefined;
     switch (modelId) {
+        case "h3-ref2va-nvfp4-community20":
+            return DEFAULT_BUILTIN_COMFYUI_VIDEO_REF2VA_NVFP4_WORKFLOW;
         case "omni-video-minimax-h3-fp8-4step-pdmd":
         case "video_minimax_h3_omni":
             return DEFAULT_BUILTIN_COMFYUI_VIDEO_PDMD_WORKFLOW;

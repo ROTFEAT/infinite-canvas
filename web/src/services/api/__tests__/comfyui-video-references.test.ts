@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { applyVideoBindings, submitComfyuiVideoJob, type ComfyuiVideoRequest, type ComfyuiWorkflowJson } from "../comfyui";
 import { defaultConfig, type ModelChannel } from "@/stores/use-config-store";
+import { getModelProfile } from "../models";
 import ref2vaGraph from "../../../../../Comfy/Comfy-Api/workflows/h3-ref2va-nvfp4-20step.json";
 vi.mock("localforage", () => ({ default: { createInstance: () => ({ setItem: vi.fn(), getItem: vi.fn(async () => null) }) } }));
 const image = { id: "image", name: "image.png", type: "image/png", dataUrl: "data:image/png;base64,AA==" };
@@ -175,4 +176,21 @@ it("preserves components of a live video source when its output uses a higher nu
     expect(result.source.inputs.file).toBe("live.mp4");
     expect(result.helper).toEqual(json.helper);
     expect(result.generate).toEqual(json.generate);
+});
+
+it("submits the registered REF2VA model without changing its fixed native graph", async () => {
+    const id = "h3-ref2va-nvfp4-community20";
+    expect(getModelProfile(id)?.id).toBe(id);
+    await submitComfyuiVideoJob({ ...request(ref2vaGraph), model: id, references: [image] });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const graph = JSON.parse(String(post[1]?.body)).prompt;
+    expect(graph["105:104"].class_type).toBe("MiniMaxH3ReferenceToVideo");
+    expect(graph["105:104"].inputs.ref_image_size).toBe("match");
+    expect(graph["105:9"].inputs.steps).toBe(20);
+    expect(graph["105:6"].inputs.unet_name).toBe("MiniMax_H3_Ref2VA_pruned_nvfp4.safetensors");
+    expect(graph.h3_ref_video_01_components).toBeUndefined();
+    expect(graph.h3_ref_audio_01).toBeUndefined();
+    expect(graph.h3_ref_image_01.inputs.image).toBe("fitted.png");
+    expect(draw).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(image.dataUrl);
 });
