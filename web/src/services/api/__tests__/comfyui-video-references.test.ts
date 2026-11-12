@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { applyVideoBindings, submitComfyuiVideoJob, type ComfyuiVideoRequest, type ComfyuiWorkflowJson } from "../comfyui";
 import { defaultConfig, type ModelChannel } from "@/stores/use-config-store";
 import { getModelProfile } from "../models";
+import fl2Graph from "@/assets/workflows/video_minimax_h3_frame_fp8_20step_api.json";
 import ref2vaGraph from "../../../../../Comfy/Comfy-Api/workflows/h3-ref2va-nvfp4-20step.json";
 vi.mock("localforage", () => ({ default: { createInstance: () => ({ setItem: vi.fn(), getItem: vi.fn(async () => null) }) } }));
 const image = { id: "image", name: "image.png", type: "image/png", dataUrl: "data:image/png;base64,AA==" };
@@ -193,4 +194,47 @@ it("submits the registered REF2VA model without changing its fixed native graph"
     expect(graph.h3_ref_image_01.inputs.image).toBe("fitted.png");
     expect(draw).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(image.dataUrl);
+});
+
+for (const includeRefWorkflow of [true, false]) for (const modelInConfig of [true, false]) it(`selects REF2VA independently of the channel default (registered=${includeRefWorkflow}, configModel=${modelInConfig})`, async () => {
+    const id = "h3-ref2va-nvfp4-community20";
+    const req = request(fl2Graph);
+    delete req.workflowId;
+    const oldDefault = req.config.channels[0].workflows![0];
+    oldDefault.isDefault = true;
+    const preferredGraph = structuredClone(ref2vaGraph);
+    preferredGraph["92"].inputs.filename_prefix = "chosen-ref-workflow";
+    if (includeRefWorkflow) req.config.channels[0].workflows!.push({ ...oldDefault, id, isDefault: false, json: preferredGraph });
+    if (modelInConfig) req.config.videoModel = id;
+    else req.model = id;
+    await submitComfyuiVideoJob({ ...req, references: [image] });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const submitted = JSON.parse(String(post[1]?.body)).prompt;
+    expect(submitted["105:104"].class_type).toBe("MiniMaxH3ReferenceToVideo");
+    expect(submitted["105:6"].inputs.unet_name).toBe("MiniMax_H3_Ref2VA_pruned_nvfp4.safetensors");
+    expect(submitted["105:9"].inputs.steps).toBe(20);
+    expect(submitted["92"].inputs.filename_prefix).toBe(includeRefWorkflow ? "chosen-ref-workflow" : "H3/REF2VA_Community20");
+    expect(draw).not.toHaveBeenCalled();
+});
+
+for (const explicitIdInConfig of [true, false]) it(`rejects an explicit FL2 workflow for REF2VA before uploads (configId=${explicitIdInConfig})`, async () => {
+    const req = { ...request(fl2Graph), model: "h3-ref2va-nvfp4-community20" };
+    if (explicitIdInConfig) { req.config.workflowId = req.workflowId; delete req.workflowId; }
+    await expect(submitComfyuiVideoJob(req)).rejects.toThrow(/REF2VA.*工作流/);
+    expect(fetch).not.toHaveBeenCalled();
+});
+
+it("honors an explicit custom REF2VA workflow ID instead of replacing it", async () => {
+    const json = structuredClone(ref2vaGraph);
+    json["92"].inputs.filename_prefix = "custom-reference-workflow";
+    await submitComfyuiVideoJob({ ...request(json), model: "h3-ref2va-nvfp4-community20", references: [image] });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    expect(JSON.parse(String(post[1]?.body)).prompt["92"].inputs.filename_prefix).toBe("custom-reference-workflow");
+});
+
+it("rejects a non-NVFP4 checkpoint even with a REF2VA conditioner", async () => {
+    const json = structuredClone(ref2vaGraph);
+    json["105:6"].inputs.unet_name = "minimax_h3_fl2va_fp8.safetensors";
+    await expect(submitComfyuiVideoJob({ ...request(json), model: "h3-ref2va-nvfp4-community20" })).rejects.toThrow(/REF2VA.*工作流/);
+    expect(fetch).not.toHaveBeenCalled();
 });
