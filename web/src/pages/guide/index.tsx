@@ -837,7 +837,7 @@ export default function GuidePage() {
                 "2. 音频生成 (MiniMax Music 03) 依赖 ComfyUI 核心版本 >= v0.31.0+；",
                 "3. 视频深度估计 (Video Depth Anything) 首次运行自动下载权重（约 111MB，国内可配置 HF_ENDPOINT=https://hf-mirror.com）；",
                 "4. 人脸精修 YOLO 权重请放置于 ComfyUI models/ultralytics/ 对应子目录；",
-                "5. 视频生成尺寸严格锁定在 0.2M~0.98M 的 9 档硬件对齐预设中（16:9 与 9:16 对称）；",
+                "5. 视频尺寸使用固定预设：16:9 与 9:16 各 12 档（0.4M~2.0M），支持方形的模型另提供 768×768、1024×1024；",
                 "6. 将 UI 工作流拖入 ComfyUI 点击 Queue Prompt 测试成功后，回到系统「设置 → 模型渠道」确认服务端口即可畅享创作！",
             ].join("\n");
 
@@ -1652,7 +1652,7 @@ export default function GuidePage() {
                                 7. 视频生成分辨率硬件锁死规则说明？
                             </h3>
                             <p className="mt-2 text-xs leading-5 text-stone-600 dark:text-stone-400">
-                                为保证 MiniMax H3 多模态架构的绝对稳定与不花屏，系统严禁手动输入任意分辨率数字。所有视频生成尺寸均已收敛在 <span className="font-semibold text-stone-800 dark:text-stone-200">0.2M ~ 0.98M 的 9 档硬件对齐预设</span> 中（16:9 与 9:16 画幅对称对调，上限严格锁定在 0.98 MP）。
+                                视频尺寸使用固定预设，不提供任意宽高输入。横屏和竖屏各有 <span className="font-semibold text-stone-800 dark:text-stone-200">0.4M ~ 2.0M 的 12 档尺寸</span>，支持方形的模型另提供 1:1 的 768×768、1024×1024 两档。尺寸均按 32 像素对齐，实际可运行范围仍受显存、时长和参考素材数量影响。
                             </p>
                         </div>
 
