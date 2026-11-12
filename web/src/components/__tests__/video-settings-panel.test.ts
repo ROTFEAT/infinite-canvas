@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CanvasVideoSettingsPopover } from "../canvas/canvas-video-settings-popover";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { defaultConfig, encodeChannelModel } from "@/stores/use-config-store";
 import {
@@ -222,13 +223,31 @@ describe("square video presets", () => {
             expect(parseVideoSize(`${tier.landscapeH}x${tier.landscapeW}`)).toMatchObject({ width: tier.landscapeH, height: tier.landscapeW, aspect: "9:16" });
         }
     });
-    it("does not offer square for a profile with only rectangular presets", () => {
+    it.each(["frame", "omni"] as const)("preserves H3 family when config capabilities intentionally switch to %s", (videoMode) => {
+        const otherMode = videoMode === "frame" ? "omni" : "frame";
+        const onParamChange = vi.fn();
+        const config = { ...defaultConfig, videoModel: `${otherMode}-video-minimax-h3-int8-6step-pika` };
+        mount({ config, videoMode, onParamChange });
+        click(otherMode === "omni" ? "全能参考 (Omni)多模态 (图/音/视频)" : "首尾帧 (Frame)首帧 / 首尾帧插帧");
+        expect(onParamChange).toHaveBeenLastCalledWith({ modelId: config.videoModel, videoMode: otherMode });
+        act(() => root.render(React.createElement(CanvasVideoSettingsPopover, { config, videoMode, onParamChange })));
+        act(() => host.querySelector("button")!.click());
+        const popover = document.querySelector(".canvas-image-settings-popover")!;
+        expect(popover.textContent).toContain(`MiniMax H3 ${videoMode === "frame" ? "首尾帧" : "全能"} (INT8 6步 Pika)`);
+    });
+    it.each(["modelId", "videoModel", "model"] as const)("does not offer square in panel or popover for a rectangular profile selected by %s with an explicit mode", (selection) => {
         const profile = { ...videoMinimaxH3OmniProfile, id: "test-rectangular-video", capabilityConfig: { ...videoMinimaxH3OmniProfile.capabilityConfig, size: { parameter: "size" as const, values: ["864x480", "480x864"], allowCustom: false } } };
         BUILTIN_WORKFLOW_MODELS.push(profile);
         try {
-            mount({ modelId: profile.id });
+            const props = { videoMode: "omni" as const, ...(selection === "modelId" ? { modelId: profile.id } : { config: { ...defaultConfig, videoModel: selection === "videoModel" ? profile.id : "", model: profile.id } }) };
+            mount(props);
             expect(host.textContent).not.toContain("1:1");
             expect(host.textContent).toContain("864 × 480");
+            act(() => root.render(React.createElement(CanvasVideoSettingsPopover, props)));
+            act(() => host.querySelector("button")!.click());
+            const popover = document.querySelector(".canvas-image-settings-popover")!;
+            expect(popover.textContent).not.toContain("1:1");
+            expect(popover.textContent).toContain("864 × 480");
             expect(normalizeVideoSizeValue("768x768", profile)).toBe("864x480");
         } finally { BUILTIN_WORKFLOW_MODELS.splice(BUILTIN_WORKFLOW_MODELS.indexOf(profile), 1); }
     });

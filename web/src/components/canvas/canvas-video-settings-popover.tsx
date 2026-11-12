@@ -15,6 +15,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
 import {
     getModelProfile,
+    resolveVideoModelIdForMode,
     videoMinimaxH3OmniProfile,
 } from "@/services/api/models";
 
@@ -70,7 +71,10 @@ export function CanvasVideoSettingsPopover({
         onSyncPosition: () => setButtonRect(buttonRef.current?.getBoundingClientRect() || null),
     });
 
-    const effectiveModelId = modelId || (videoMode === "frame" ? "frame-video-minimax-h3-int8-6step-selflift" : videoMode === "omni" ? "omni-video-minimax-h3-int8-6step-selflift" : undefined) || config?.videoModel || config?.model;
+    const selectedModelId = modelId || config?.videoModel || config?.model;
+    const selectedProfile = getModelProfile(selectedModelId);
+    const modeModelId = videoMode ? (selectedProfile ? resolveVideoModelIdForMode(selectedModelId, videoMode) : `${videoMode}-video-minimax-h3-int8-6step-selflift`) : undefined;
+    const effectiveModelId = modelId || (selectedProfile && (!videoMode || selectedProfile.category === (videoMode === "frame" ? "frameVideo" : "omniVideo")) ? selectedModelId : modeModelId) || selectedModelId;
     const profile = getModelProfile(effectiveModelId) || videoMinimaxH3OmniProfile;
     const currentMode = videoMode || (profile.category === "frameVideo" ? "frame" : (config?.videoMode === "frame" ? "frame" : "omni"));
     const currentSize = size || config?.size;

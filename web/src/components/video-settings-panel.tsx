@@ -85,9 +85,11 @@ export function VideoSettingsPanel({
     const { t } = useTranslation();
 
     // 动态解析绑定的工作流模型 Profile
-    const effectiveModelId = modelId || (videoMode === "frame" ? "frame-video-minimax-h3-fp8-4step-pdmd" : videoMode === "omni" ? "omni-video-minimax-h3-fp8-4step-pdmd" : undefined) || config?.videoModel || config?.model;
-    const profile = getModelProfile(effectiveModelId) || videoMinimaxH3OmniProfile;
     const selectedModelId = modelId || config?.videoModel || config?.model;
+    const selectedProfile = getModelProfile(selectedModelId);
+    const modeModelId = videoMode ? resolveVideoModelIdForMode(selectedModelId, videoMode) : undefined;
+    const effectiveModelId = modelId || (selectedProfile && (!videoMode || selectedProfile.category === (videoMode === "frame" ? "frameVideo" : "omniVideo")) ? selectedModelId : modeModelId) || selectedModelId;
+    const profile = getModelProfile(effectiveModelId) || videoMinimaxH3OmniProfile;
     const modelLabel = selectedModelId ? (getModelProfile(selectedModelId)?.name || modelOptionName(selectedModelId)) : profile.name;
 
     const currentMode: "omni" | "frame" = videoMode || (profile.category === "frameVideo" ? "frame" : (config?.videoMode === "frame" ? "frame" : "omni"));

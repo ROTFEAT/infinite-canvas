@@ -17,7 +17,14 @@ describe("REF2VA NVFP4 20-step registration", () => {
         expect(resolveVideoModelIdFromWorkflowId(id)).toBe(id);
         expect(BUILTIN_VIDEO_WORKFLOW_MODELS.find((model) => model.id === id)).toBe(profile);
         expect(profile?.capabilityConfig.references).toMatchObject({ maxImages: 9, maxVideos: 3, maxAudios: 3 });
-        expect(profile?.capabilityConfig.size?.values).toHaveLength(24);
+        const sizes = profile!.capabilityConfig.size!.values;
+        expect(sizes).toHaveLength(26);
+        const dimensions = sizes.map((size) => size.split("x").map(Number));
+        expect(dimensions.filter(([width, height]) => width === height)).toEqual([[768, 768], [1024, 1024]]);
+        const landscape = dimensions.filter(([width, height]) => width > height);
+        expect(landscape).toHaveLength(12);
+        expect(dimensions.filter(([width, height]) => width < height)).toHaveLength(12);
+        for (const [width, height] of landscape) expect(sizes).toContain(`${height}x${width}`);
     });
 
     it("preserves REF2VA when choosing its existing omni mode", () => {
