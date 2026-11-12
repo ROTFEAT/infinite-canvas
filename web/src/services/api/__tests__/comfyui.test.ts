@@ -773,6 +773,7 @@ describe("cancelJob", () => {
         const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
         expect(url).toBe("http://10.7.8.12:8188/interrupt");
         expect(init.method).toBe("POST");
+        expect(JSON.parse(String(init.body))).toEqual({ prompt_id: "job_1" });
     });
 
     it("does not mutate the queue when the target job is absent", async () => {

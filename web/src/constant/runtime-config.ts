@@ -7,6 +7,7 @@
 
 type RuntimeConfig = {
     SERVER_CONFIG_ENABLED?: string;
+    GENERATION_QUEUE_ENABLED?: string;
     ANALYTICS_GA4_ID?: string; // GA4 measurement ID (G-XXXX)
     ANALYTICS_BAIDU_ID?: string; // Baidu Analytics site ID
 };
@@ -30,3 +31,5 @@ export const ANALYTICS_GA4_ID = read("ANALYTICS_GA4_ID", import.meta.env.VITE_AN
 export const ANALYTICS_BAIDU_ID = read("ANALYTICS_BAIDU_ID", import.meta.env.VITE_ANALYTICS_BAIDU_ID);
 
 export const SERVER_CONFIG_ENABLED = read("SERVER_CONFIG_ENABLED", import.meta.env.VITE_SERVER_CONFIG_ENABLED) === "true";
+
+export const GENERATION_QUEUE_ENABLED = read("GENERATION_QUEUE_ENABLED", import.meta.env.VITE_GENERATION_QUEUE_ENABLED) === "true";

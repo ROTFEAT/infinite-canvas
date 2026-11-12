@@ -2055,7 +2055,7 @@ export async function cancelJob(jobId: string, baseUrl: string, token?: string):
             return;
         }
         if (isRunning) {
-            await comfyuiFetch(`${normalizeBaseUrl(baseUrl)}/interrupt`, { method: "POST", headers, body: "{}" }, baseUrl);
+            await comfyuiFetch(`${normalizeBaseUrl(baseUrl)}/interrupt`, { method: "POST", headers, body: JSON.stringify({ prompt_id: jobId }) }, baseUrl);
         }
     } catch {
         // Best-effort: 无法确认目标任务位置时静默返回，绝不全局 interrupt。

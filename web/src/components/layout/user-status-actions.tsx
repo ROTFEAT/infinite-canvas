@@ -1,10 +1,11 @@
 import type { CSSProperties } from "react";
 import { Tooltip } from "antd";
-import { BookOpen, Keyboard, Puzzle, Settings2, Sparkles } from "lucide-react";
+import { BookOpen, ListOrdered, Keyboard, Puzzle, Settings2, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
+import { GENERATION_QUEUE_ENABLED } from "@/constant/runtime-config";
 import { DOCS_URL, REPO_URL } from "@/constant/env";
 import { changeAppLocale, type AppLocale } from "@/i18n";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -32,6 +33,7 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
 
     return (
         <div className="inline-flex shrink-0 items-center gap-1">
+            {GENERATION_QUEUE_ENABLED && <Link to="/queue" target="_blank" rel="noopener noreferrer" className={naturalIconClass} style={iconStyle} aria-label="生成队列" title="生成队列"><ListOrdered className="size-4" /></Link>}
             {onOpenPlugins ? (
                 <button type="button" className={naturalIconClass} style={iconStyle} onClick={onOpenPlugins} aria-label={t("topNav.plugins")} title={t("topNav.plugins")}>
                     <Puzzle className="size-4" />

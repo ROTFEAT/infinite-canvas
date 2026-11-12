@@ -1,0 +1,40 @@
+# Workers are deployed separately, on COMFY_NETWORK, sharing input but with separate output directories.
+services:
+  canvas:
+    build: .
+    ports: ["${CANVAS_BIND:-127.0.0.1}:18083:3000"]
+    environment:
+      SERVER_CONFIG_ENABLED: "true"
+      GENERATION_QUEUE_ENABLED: "true"
+    volumes:
+      - ./nginx.generation-queue.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [instance-config, generation-queue]
+    restart: unless-stopped
+  instance-config:
+    build:
+      context: .
+      dockerfile: Dockerfile.instance-config
+    environment:
+      INSTANCE_CONFIG_ORIGIN: ${CANVAS_ORIGIN:?set the browser origin}
+    volumes: [instance-config-data:/data]
+    restart: unless-stopped
+  generation-queue:
+    build:
+      context: .
+      dockerfile: Dockerfile.generation-queue
+    environment:
+      GENERATION_ALLOWED_ORIGIN: ${CANVAS_ORIGIN:?set the browser origin}
+      GENERATION_WORKERS: ${GENERATION_WORKERS:?set fixed worker URLs as JSON}
+      GENERATION_DB_PATH: /data/queue.sqlite
+      GENERATION_PUBLIC_PREFIX: /api/generation
+      PORT: "3002"
+    volumes: [generation-queue-data:/data]
+    networks: [default, comfy]
+    restart: unless-stopped
+volumes:
+  instance-config-data:
+  generation-queue-data:
+networks:
+  comfy:
+    external: true
+    name: ${COMFY_NETWORK:-h3_default}

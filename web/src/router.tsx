@@ -14,6 +14,7 @@ import ImagePage from "@/pages/image";
 import NotFound from "@/pages/not-found";
 import PricingPage from "@/pages/pricing";
 import PromptsPage from "@/pages/prompts";
+import QueuePage from "@/pages/queue";
 import VideoPage from "@/pages/video";
 import WorkflowsPage from "@/pages/workflows";
 
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
             { path: "/", element: <HomePage /> },
             { path: "/image", element: <ImagePage /> },
             { path: "/video", element: <VideoPage /> },
+            { path: "/queue", element: <QueuePage /> },
             { path: "/workflows", element: <WorkflowsPage /> },
             { path: "/community", element: <CommunityPage /> },
             { path: "/community/studio", element: <CommunityStudioPage /> },
