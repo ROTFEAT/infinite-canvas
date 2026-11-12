@@ -1,0 +1,545 @@
+{
+  "92": {
+    "inputs": {
+      "filename_prefix": "H3/REF2VA_Community20",
+      "format": "auto",
+      "codec": "auto",
+      "video": [
+        "105:91",
+        0
+      ],
+      "format.codec": "auto"
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "output_video"
+    }
+  },
+  "121": {
+    "inputs": {
+      "value": 1344
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "width"
+    }
+  },
+  "122": {
+    "inputs": {
+      "value": 768
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "height"
+    }
+  },
+  "123": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "duration"
+    }
+  },
+  "125": {
+    "inputs": {
+      "value": 42
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "seed"
+    }
+  },
+  "126": {
+    "inputs": {
+      "value": "A small red panda walks slowly through a green bamboo forest, soft daylight, steady camera. Natural wind and birdsong."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "prompt"
+    }
+  },
+  "201": {
+    "class_type": "H3NVFP4FusedMLP",
+    "inputs": {
+      "model": [
+        "105:6",
+        0
+      ],
+      "vram_residency": "off"
+    },
+    "_meta": {
+      "title": "H3 NVFP4 Fused MLP (exact)"
+    }
+  },
+  "105:11": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "105:24": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "105:23": {
+    "inputs": {
+      "samples": [
+        "105:14",
+        0
+      ],
+      "vae": [
+        "105:24",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE解码（音频）"
+    }
+  },
+  "105:10": {
+    "inputs": {
+      "samples": [
+        "105:14",
+        0
+      ],
+      "vae": [
+        "105:11",
+        0
+      ],
+      "tile_size": 256,
+      "overlap": 64,
+      "temporal_size": 16,
+      "temporal_overlap": 4
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "105:17": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "105:9": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "201",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "基本调度器"
+    }
+  },
+  "105:14": {
+    "inputs": {
+      "noise": [
+        "105:15",
+        0
+      ],
+      "guider": [
+        "105:16",
+        0
+      ],
+      "sampler": [
+        "105:17",
+        0
+      ],
+      "sigmas": [
+        "105:9",
+        0
+      ],
+      "latent_image": [
+        "105:104",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器（高级）"
+    }
+  },
+  "105:16": {
+    "inputs": {
+      "model": [
+        "201",
+        0
+      ],
+      "conditioning": [
+        "105:104",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "基本引导器"
+    }
+  },
+  "105:6": {
+    "inputs": {
+      "unet_name": "MiniMax_H3_Ref2VA_pruned_nvfp4.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "select_models_diffusion_models"
+    }
+  },
+  "105:13": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "select_models_clip"
+    }
+  },
+  "105:15": {
+    "inputs": {
+      "noise_seed": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "105:91": {
+    "inputs": {
+      "fps": 24,
+      "bit_depth": 8,
+      "images": [
+        "105:10",
+        0
+      ],
+      "audio": [
+        "105:23",
+        0
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "创建视频"
+    }
+  },
+  "105:104": {
+    "inputs": {
+      "prompt": [
+        "126",
+        0
+      ],
+      "width": [
+        "121",
+        0
+      ],
+      "height": [
+        "122",
+        0
+      ],
+      "length": [
+        "105:107",
+        1
+      ],
+      "clip": [
+        "105:13",
+        0
+      ],
+      "vae": [
+        "105:11",
+        0
+      ],
+      "audio_vae": [
+        "105:24",
+        0
+      ],
+      "ref_image_size": "match",
+      "ref_images.ref_image_0": [
+        "h3_ref_image_01",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "h3_ref_image_02",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "h3_ref_image_03",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "h3_ref_image_04",
+        0
+      ],
+      "ref_images.ref_image_4": [
+        "h3_ref_image_05",
+        0
+      ],
+      "ref_images.ref_image_5": [
+        "h3_ref_image_06",
+        0
+      ],
+      "ref_images.ref_image_6": [
+        "h3_ref_image_07",
+        0
+      ],
+      "ref_images.ref_image_7": [
+        "h3_ref_image_08",
+        0
+      ],
+      "ref_images.ref_image_8": [
+        "h3_ref_image_09",
+        0
+      ],
+      "ref_video_audios.ref_video_audio_0": [
+        "h3_ref_video_01_components",
+        1
+      ],
+      "ref_videos.ref_video_0": [
+        "h3_ref_video_01_components",
+        0
+      ],
+      "ref_video_audios.ref_video_audio_1": [
+        "h3_ref_video_02_components",
+        1
+      ],
+      "ref_videos.ref_video_1": [
+        "h3_ref_video_02_components",
+        0
+      ],
+      "ref_video_audios.ref_video_audio_2": [
+        "h3_ref_video_03_components",
+        1
+      ],
+      "ref_videos.ref_video_2": [
+        "h3_ref_video_03_components",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "h3_ref_audio_01",
+        0
+      ],
+      "ref_audios.ref_audio_1": [
+        "h3_ref_audio_02",
+        0
+      ],
+      "ref_audios.ref_audio_2": [
+        "h3_ref_audio_03",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 REF2VA · 自由参考"
+    }
+  },
+  "105:107": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "105:111",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "数学表达式"
+    }
+  },
+  "105:111": {
+    "inputs": {
+      "value": [
+        "123",
+        0
+      ]
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Float (duration)"
+    }
+  },
+  "h3_ref_image_01": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_01"
+    }
+  },
+  "h3_ref_image_02": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_02"
+    }
+  },
+  "h3_ref_image_03": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_03"
+    }
+  },
+  "h3_ref_image_04": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_04"
+    }
+  },
+  "h3_ref_image_05": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_05"
+    }
+  },
+  "h3_ref_image_06": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_06"
+    }
+  },
+  "h3_ref_image_07": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_07"
+    }
+  },
+  "h3_ref_image_08": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_08"
+    }
+  },
+  "h3_ref_image_09": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__upload_required__.png"
+    },
+    "_meta": {
+      "title": "ref_image_09"
+    }
+  },
+  "h3_ref_video_01": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "__upload_required__.mp4"
+    },
+    "_meta": {
+      "title": "ref_video_01"
+    }
+  },
+  "h3_ref_video_01_components": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "h3_ref_video_01",
+        0
+      ]
+    }
+  },
+  "h3_ref_video_02": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "__upload_required__.mp4"
+    },
+    "_meta": {
+      "title": "ref_video_02"
+    }
+  },
+  "h3_ref_video_02_components": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "h3_ref_video_02",
+        0
+      ]
+    }
+  },
+  "h3_ref_video_03": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "__upload_required__.mp4"
+    },
+    "_meta": {
+      "title": "ref_video_03"
+    }
+  },
+  "h3_ref_video_03_components": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "h3_ref_video_03",
+        0
+      ]
+    }
+  },
+  "h3_ref_audio_01": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "__upload_required__.mp3"
+    },
+    "_meta": {
+      "title": "ref_audio_01"
+    }
+  },
+  "h3_ref_audio_02": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "__upload_required__.mp3"
+    },
+    "_meta": {
+      "title": "ref_audio_02"
+    }
+  },
+  "h3_ref_audio_03": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "__upload_required__.mp3"
+    },
+    "_meta": {
+      "title": "ref_audio_03"
+    }
+  }
+}
