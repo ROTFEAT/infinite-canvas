@@ -3247,7 +3247,7 @@ export function applyVideoBindings(
         return false;
     };
 
-    // Pass 2: 按主节点输入键名（ref_images.ref_image_N / ref_videos.ref_video_N / ref_audios.ref_audio_N）
+    // Pass 2: 按主节点参考输入键名（含与视频配对的 ref_video_audios.ref_video_audio_N）
     // 反向追溯未指派插槽的上游节点，解决 LoadVideo/LoadAudio 无 ref 标题无法被 Pass 1 捕获的问题
     for (const [consumerId, node] of Object.entries(cloned)) {
         if (removedNodeIds.has(consumerId)) continue;
@@ -3273,6 +3273,8 @@ export function applyVideoBindings(
             if (imgIn && Number(imgIn[1]) >= assignedImageCount) shouldPrune = true;
             const vidIn = /^ref_videos\.ref_video_(\d+)$/.exec(inputKey);
             if (vidIn && Number(vidIn[1]) >= assignedVideoCount) shouldPrune = true;
+            const vidAudioIn = /^ref_video_audios\.ref_video_audio_(\d+)$/.exec(inputKey);
+            if (vidAudioIn && Number(vidAudioIn[1]) >= assignedVideoCount) shouldPrune = true;
             const audIn = /^ref_audios\.ref_audio_(\d+)$/.exec(inputKey);
             if (audIn && Number(audIn[1]) >= assignedAudioCount) shouldPrune = true;
 

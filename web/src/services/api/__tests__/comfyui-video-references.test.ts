@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { submitComfyuiVideoJob, type ComfyuiVideoRequest, type ComfyuiWorkflowJson } from "../comfyui";
+import { applyVideoBindings, submitComfyuiVideoJob, type ComfyuiVideoRequest, type ComfyuiWorkflowJson } from "../comfyui";
 import { defaultConfig, type ModelChannel } from "@/stores/use-config-store";
+import ref2vaGraph from "../../../../../Comfy/Comfy-Api/workflows/h3-ref2va-nvfp4-20step.json";
 vi.mock("localforage", () => ({ default: { createInstance: () => ({ setItem: vi.fn(), getItem: vi.fn(async () => null) }) } }));
 const image = { id: "image", name: "image.png", type: "image/png", dataUrl: "data:image/png;base64,AA==" };
 const video = { id: "video", name: "video.mp4", type: "video/mp4", url: "blob:video" };
@@ -110,4 +111,68 @@ it("rejects a numeric value input masquerading as an image filename slot", async
     (json.ref as { inputs: Record<string, unknown> }).inputs.value = 1;
     await expect(submitComfyuiVideoJob({ ...request(json), references: [image] })).rejects.toThrow(/槽位/);
     expect(fetch).not.toHaveBeenCalled();
+});
+
+it("submits two REF2VA images unchanged and prunes every unused reference branch", async () => {
+    const second = { ...image, id: "second", dataUrl: "data:image/png;base64,Qg==" };
+    let upload = 0;
+    vi.mocked(fetch).mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.startsWith("data:")) return new Response(new Blob([url]));
+        if (url.endsWith("/upload/image")) return Response.json({ name: `image-${++upload}.png` });
+        if (url.endsWith("/prompt")) return Response.json({ prompt_id: "job" });
+        if (url.endsWith("/system_stats")) return Response.json({ system: { os: "nt" } });
+        throw Error(url);
+    });
+    await submitComfyuiVideoJob({ ...request(ref2vaGraph), references: [image, second] });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const graph = JSON.parse(String(post[1]?.body)).prompt;
+    expect(draw).not.toHaveBeenCalled();
+    expect(graph.h3_ref_image_01.inputs.image).toBe("image-1.png");
+    expect(graph.h3_ref_image_02.inputs.image).toBe("image-2.png");
+    expect(graph["105:104"].inputs["ref_images.ref_image_0"]).toEqual(["h3_ref_image_01", 0]);
+    expect(graph["105:104"].inputs["ref_images.ref_image_1"]).toEqual(["h3_ref_image_02", 0]);
+    expect(graph["105:104"].inputs.first_frame).toBeUndefined();
+    expect(graph.h3_ref_image_03).toBeUndefined();
+    expect(graph.h3_ref_video_01_components).toBeUndefined();
+    expect(graph.h3_ref_audio_01).toBeUndefined();
+    expect(Object.keys(graph["105:104"].inputs).some((key) => key.startsWith("ref_video") || key.startsWith("ref_audio"))).toBe(false);
+});
+
+it("keeps a REF2VA video's paired soundtrack and standalone audio on distinct ports", async () => {
+    await submitComfyuiVideoJob({ ...request(ref2vaGraph), references: [image], referenceVideos: [video], referenceAudios: [{ ...video, id: "audio", type: "audio/mp3" }] });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const graph = JSON.parse(String(post[1]?.body)).prompt;
+    const inputs = graph["105:104"].inputs;
+    expect(inputs["ref_videos.ref_video_0"]).toEqual(["h3_ref_video_01_components", 0]);
+    expect(inputs["ref_video_audios.ref_video_audio_0"]).toEqual(["h3_ref_video_01_components", 1]);
+    expect(inputs["ref_audios.ref_audio_0"]).toEqual(["h3_ref_audio_01", 0]);
+    expect(graph.h3_ref_video_02_components).toBeUndefined();
+    expect(draw).not.toHaveBeenCalled();
+});
+
+it("prunes both unused video ports without removing a helper shared by a live consumer", () => {
+    const json = {
+        source: { inputs: { file: "shared.mp4" } },
+        helper: { inputs: { video: ["source", 0] } },
+        generate: { inputs: { "ref_videos.ref_video_0": ["helper", 0], "ref_video_audios.ref_video_audio_0": ["helper", 1] } },
+        preview: { inputs: { audio: ["helper", 1] } },
+    };
+    const result = applyVideoBindings(json, { prompt: "" }) as typeof json;
+    expect(result.generate.inputs).toEqual({});
+    expect(result.helper).toEqual(json.helper);
+    expect(result.source).toEqual(json.source);
+    expect(result.preview).toEqual(json.preview);
+});
+
+it("preserves components of a live video source when its output uses a higher numbered port", () => {
+    const json = {
+        source: { inputs: { file: "old.mp4" }, _meta: { title: "ref_video_01" } },
+        helper: { class_type: "GetVideoComponents", inputs: { video: ["source", 0] } },
+        generate: { inputs: { "ref_videos.ref_video_2": ["helper", 0], "ref_video_audios.ref_video_audio_2": ["helper", 1] } },
+    };
+    const result = applyVideoBindings(json, { prompt: "", videoAssetIds: ["live.mp4"] }) as typeof json;
+    expect(result.source.inputs.file).toBe("live.mp4");
+    expect(result.helper).toEqual(json.helper);
+    expect(result.generate).toEqual(json.generate);
 });
