@@ -148,3 +148,8 @@
 - 用户授权开发可选的自托管共享配置服务；相关 API 位于 `web/server/instance-config-server.mjs`，浏览器调用集中在 `web/src/services/api/instance-config.ts`。这限定为实例配置持久化，不改变 ComfyUI 请求直连规则。
 - 默认静态部署保留。共享服务只面向受信任的单实例，认证凭据仍按既有规则保留在各浏览器。
 - 配置 JSON 必须写入持久卷，不能纳入 Git；测试只使用临时目录。
+
+## 本 fork 的双 GPU 队列例外
+
+- 用户授权自托管持久化任务队列，允许 `/api/generation` 将 ComfyUI 原生协议分发给服务端固定配置的两个本地 worker；不引入外部商用模型代理。
+- 调度和状态、结果元数据写入持久卷；输入共享、输出按 worker 隔离。默认静态部署保持直连。
