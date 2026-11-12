@@ -1,0 +1,9 @@
+FROM node:22-alpine
+WORKDIR /app
+RUN npm install --omit=dev --no-audit --no-fund --save-exact ws@8.21.3
+COPY web/server/generation-queue.mjs ./generation-queue.mjs
+ENV PORT=3002 GENERATION_DB_PATH=/data/queue.sqlite GENERATION_PUBLIC_PREFIX=/api/generation
+RUN mkdir /data && chown node:node /data
+USER node
+EXPOSE 3002
+CMD ["node", "generation-queue.mjs"]
