@@ -1,3 +1,5 @@
+import { getVideoReferenceSlots, bindVideoReferenceSlots } from "./video-reference-validation";
+import { fitVideoFrameImage } from "./video-frame-image";
 import localforage from "localforage";
 
 import { nanoid } from "nanoid";
@@ -2340,6 +2342,7 @@ export async function uploadComfyuiAsset(
     }
 
     const res = await fetch(dataUrl);
+    if (res.ok === false) throw new ComfyuiError(`获取参考素材失败（HTTP ${res.status}），请重新选择资源后重试`);
     const blob = await res.blob();
     if (blob.size > MAX_COMFYUI_ASSET_BYTES) {
         throw new ComfyuiAssetTooLargeError({ filename, sizeBytes: blob.size });
@@ -3464,14 +3467,34 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
     const token = channel.comfyuiProxyToken;
 
     try {
-        let toolSourceUrl: string | undefined;
-        if (isVideoTool) {
-            validateVideoToolInputs(targetWorkflowItem.category, { prompt: req.prompt, referenceImages: req.references, referenceVideos: req.referenceVideos, referenceAudios: req.referenceAudios });
+        if (!isFrameMode && (req.firstFrame || req.lastFrame)) throw new ComfyuiApiError("当前工作流未启用首尾帧槽位，请移除首尾帧输入或选择首尾帧工作流");
+        if (isVideoTool) validateVideoToolInputs(targetWorkflowItem.category, { prompt: req.prompt, referenceImages: req.references, referenceVideos: req.referenceVideos, referenceAudios: req.referenceAudios });
+        if (isFrameMode && frameImages.length > 2) throw new ComfyuiApiError(`首尾帧模式最多支持 2 张参考图，已连接 ${frameImages.length} 张`);
+        if (isFrameMode && (req.referenceVideos?.length || req.referenceAudios?.length)) throw new ComfyuiApiError("首尾帧模式不支持视频或音频参考，请移除后再生成");
+        if ((req.references?.length || 0) > 9 || (req.referenceVideos?.length || 0) > 3 || (req.referenceAudios?.length || 0) > 3) throw new ComfyuiApiError("视频参考资源超过槽位上限（9 图、3 视频、3 音频），请精简连线");
+        const selectedImages = isFrameMode ? frameImages : req.references || [];
+        const numberedTitles = (kind: string, count: number) => Array.from({ length: count }, (_, i) => `ref_${kind}_${String(i + 1).padStart(2, "0")}`);
+        const imageTitles = isFrameMode ? ["first_frame", "last_frame"].slice(0, selectedImages.length) : numberedTitles("image", selectedImages.length);
+        const slots = getVideoReferenceSlots(videoWorkflow.json, [...imageTitles, ...numberedTitles("video", req.referenceVideos?.length || 0), ...numberedTitles("audio", req.referenceAudios?.length || 0)]);
+        for (const image of selectedImages) if (!image.dataUrl?.trim()) throw new ComfyuiApiError("参考图不可用，请重新选择或读取图片后再生成");
+        // Resolve every selected resource before the first upload, so a late missing asset cannot waste uploads.
+        const resolveReferences = async (refs: Array<ReferenceVideo | ReferenceAudio>, label: string) => {
+            if (!refs.length) return [];
             const { resolveMediaUrl } = await import("@/services/file-storage");
-            const source = req.referenceVideos![0];
-            toolSourceUrl = await resolveMediaUrl(source.storageKey, source.url);
-            if (!toolSourceUrl?.trim()) throw new ComfyuiApiError("工具的源视频不可用，请重新选择原视频后执行");
-        }
+            return Promise.all(refs.map(async (ref) => {
+                const raw = ref.url || (ref as { dataUrl?: string }).dataUrl || (ref as { src?: string }).src || "";
+                if (!raw.trim() && !ref.storageKey?.trim()) throw new ComfyuiApiError(`${label}不可用，请重新选择资源后生成`);
+                const url = await resolveMediaUrl(ref.storageKey, raw);
+                if (!url?.trim()) throw new ComfyuiApiError(`${label}不可用，请重新选择资源后生成`);
+                return url;
+            }));
+        };
+        const resolvedVideoUrls = await resolveReferences(req.referenceVideos || [], isVideoTool ? "工具的源视频" : "参考视频");
+        const resolvedAudioUrls = await resolveReferences(req.referenceAudios || [], "参考音频");
+        const sizeMatch = (req.config.size || "").match(/^(\d+)x(\d+)$/);
+        const width = sizeMatch ? Number(sizeMatch[1]) : 544;
+        const height = sizeMatch ? Number(sizeMatch[2]) : 960;
+        const preparedImages = await Promise.all(selectedImages.map((image, i) => slots[i].frame ? fitVideoFrameImage(image.dataUrl, width, height) : image.dataUrl));
         let firstFrameAssetId: string | undefined;
         let lastFrameAssetId: string | undefined;
         const assetIds: string[] = [];
@@ -3479,76 +3502,14 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
         const audioAssetIds: string[] = [];
 
         if (videoMode === "frame") {
-            // 首尾帧模式 - 严格校验（Fail-loud）：在任何上传之前先校验数量/类型
-            if (frameImages.length > 2) {
-                throw new ComfyuiError(`首尾帧模式最多支持 2 张参考图，已连接 ${frameImages.length} 张`);
-            }
-            if ((req.referenceVideos && req.referenceVideos.length > 0) || (req.referenceAudios && req.referenceAudios.length > 0)) {
-                throw new ComfyuiError("首尾帧模式不支持视频或音频参考，请移除后再生成");
-            }
-            const firstFrameImg = frameImages[0];
-            const lastFrameImg = frameImages[1];
-            if (firstFrameImg?.dataUrl) {
-                firstFrameAssetId = await uploadComfyuiAsset(baseUrl, token, firstFrameImg.dataUrl, "first_frame.png", req.signal);
-            }
-            if (lastFrameImg?.dataUrl) {
-                lastFrameAssetId = await uploadComfyuiAsset(baseUrl, token, lastFrameImg.dataUrl, "last_frame.png", req.signal);
-            }
+            if (preparedImages[0]) firstFrameAssetId = await uploadComfyuiAsset(baseUrl, token, preparedImages[0], "first_frame.png", req.signal);
+            if (preparedImages[1]) lastFrameAssetId = await uploadComfyuiAsset(baseUrl, token, preparedImages[1], "last_frame.png", req.signal);
         } else {
-            // 全能参考模式 - 严格校验（Fail-loud）
-            if (req.references && req.references.length > 9) {
-                throw new Error(`当前视频工作流最多支持 9 张参考图，已连接 ${req.references.length} 张，请精简连线后再生成`);
-            }
-            if (req.referenceVideos && req.referenceVideos.length > 3) {
-                throw new Error(`当前视频工作流最多支持 3 个参考视频，已连接 ${req.referenceVideos.length} 个，请精简连线后再生成`);
-            }
-            if (req.referenceAudios && req.referenceAudios.length > 3) {
-                throw new Error(`当前视频工作流最多支持 3 个参考音频，已连接 ${req.referenceAudios.length} 个，请精简连线后再生成`);
-            }
-
-            // 上传图片参考资产
-            if (req.references?.length) {
-                for (let i = 0; i < req.references.length; i++) {
-                    const dataUrl = req.references[i]?.dataUrl;
-                    if (dataUrl) {
-                        const id = await uploadComfyuiAsset(baseUrl, token, dataUrl, `ref_${i + 1}.png`, req.signal);
-                        assetIds.push(id);
-                    }
-                }
-            }
-
-            // 上传视频参考资产
-            if (req.referenceVideos?.length) {
-                const { resolveMediaUrl } = await import("@/services/file-storage");
-                for (let i = 0; i < req.referenceVideos.length; i++) {
-                    const ref = req.referenceVideos[i];
-                    const rawUrl = ref?.url || (ref as unknown as { dataUrl?: string })?.dataUrl || (ref as unknown as { src?: string })?.src || "";
-                    const resolvedUrl = toolSourceUrl || await resolveMediaUrl(ref?.storageKey, rawUrl);
-                    if (resolvedUrl) {
-                        const id = await uploadComfyuiAsset(baseUrl, token, resolvedUrl, `ref_video_${i + 1}.mp4`, req.signal);
-                        videoAssetIds.push(id);
-                    }
-                }
-            }
-
-            // 上传音频参考资产
-            if (req.referenceAudios?.length) {
-                const { resolveMediaUrl } = await import("@/services/file-storage");
-                for (let i = 0; i < req.referenceAudios.length; i++) {
-                    const ref = req.referenceAudios[i];
-                    const rawUrl = ref?.url || (ref as unknown as { dataUrl?: string })?.dataUrl || (ref as unknown as { src?: string })?.src || "";
-                    const resolvedUrl = await resolveMediaUrl(ref?.storageKey, rawUrl);
-                    if (resolvedUrl) {
-                        const id = await uploadComfyuiAsset(baseUrl, token, resolvedUrl, `ref_audio_${i + 1}.mp3`, req.signal);
-                        audioAssetIds.push(id);
-                    }
-                }
-            }
+            for (let i = 0; i < preparedImages.length; i++) assetIds.push(await uploadComfyuiAsset(baseUrl, token, preparedImages[i], `ref_${i + 1}.png`, req.signal));
+            for (let i = 0; i < resolvedVideoUrls.length; i++) videoAssetIds.push(await uploadComfyuiAsset(baseUrl, token, resolvedVideoUrls[i], `ref_video_${i + 1}.mp4`, req.signal));
+            for (let i = 0; i < resolvedAudioUrls.length; i++) audioAssetIds.push(await uploadComfyuiAsset(baseUrl, token, resolvedAudioUrls[i], `ref_audio_${i + 1}.mp3`, req.signal));
         }
 
-        const sizeMatch = (req.config.size || "").match(/^(\d+)x(\d+)$/);
-        const width = sizeMatch ? Number(sizeMatch[1]) : 544;
-        const height = sizeMatch ? Number(sizeMatch[2]) : 960;
         const duration = req.config.videoSeconds ? Number(req.config.videoSeconds) : 5;
 
         const seed = req.seed !== undefined ? req.seed : generateRandomSeed() % 1_000_000_000;
@@ -3580,6 +3541,7 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
                   duration,
               });
 
+        bindVideoReferenceSlots(boundWorkflow, videoWorkflow.json, slots, [...(isFrameMode ? [firstFrameAssetId, lastFrameAssetId].filter((id): id is string => Boolean(id)) : assetIds), ...videoAssetIds, ...audioAssetIds]);
         const jobId = await submitJob(boundWorkflow, baseUrl, token);
         return { jobId, baseUrl, token };
     } catch (error) {

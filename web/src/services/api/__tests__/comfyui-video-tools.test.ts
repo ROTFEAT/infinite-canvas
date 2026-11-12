@@ -8,7 +8,7 @@ vi.mock("localforage", () => ({ default: { createInstance: () => ({ setItem: vi.
 
 const toolWorkflow = {
     "1": { class_type: "PrimitiveStringMultiline", inputs: { value: "" }, _meta: { title: "prompt" } },
-    "2": { class_type: "H3FaceTrackCrop", inputs: { images: ["5", 0] } },
+    "2": { class_type: "H3FaceTrackCrop", inputs: { images: ["5", 0], face: ["3", 0] }, _meta: { title: "output_video" } },
     "3": { class_type: "LoadImage", inputs: { image: "stale.png" }, _meta: { title: "ref_image_01" } },
     "4": { class_type: "LoadVideo", inputs: { file: "stale.mp4" }, _meta: { title: "ref_video_01" } },
     "5": { class_type: "GetVideoComponents", inputs: { video: ["4", 0] } },

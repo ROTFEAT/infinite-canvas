@@ -1,0 +1,113 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { submitComfyuiVideoJob, type ComfyuiVideoRequest, type ComfyuiWorkflowJson } from "../comfyui";
+import { defaultConfig, type ModelChannel } from "@/stores/use-config-store";
+vi.mock("localforage", () => ({ default: { createInstance: () => ({ setItem: vi.fn(), getItem: vi.fn(async () => null) }) } }));
+const image = { id: "image", name: "image.png", type: "image/png", dataUrl: "data:image/png;base64,AA==" };
+const video = { id: "video", name: "video.mp4", type: "video/mp4", url: "blob:video" };
+const graph = (title = "ref_image_01", key = "image"): ComfyuiWorkflowJson => ({ ref: { inputs: { [key]: "old" }, _meta: { title } }, helper: { inputs: { image: ["ref", 0] } }, generate: { inputs: { first_frame: ["helper", 0] } }, out: { inputs: { video: ["generate", 0] }, _meta: { title: "output_video" } } });
+function request(json: ComfyuiWorkflowJson = { out: { inputs: {}, _meta: { title: "output_video" } } }): ComfyuiVideoRequest {
+    const channel = { id: "c", name: "测试渠道", apiFormat: "comfyui", baseUrl: "", apiKey: "", models: [], comfyuiProxyUrl: "http://test:8188", workflows: [{ id: "custom", name: "custom", category: "omniVideo", json, createdAt: 0 }] } as ModelChannel;
+    return { config: { ...defaultConfig, channels: [channel], channelId: "c", videoModel: "custom", size: "1280x736", videoMode: "omni" }, workflowId: "custom", prompt: "video", videoMode: "omni" };
+}
+let draw: ReturnType<typeof vi.fn>;
+let fill: ReturnType<typeof vi.fn>;
+beforeEach(() => {
+    draw = vi.fn(); fill = vi.fn();
+    vi.stubGlobal("Image", class { naturalWidth = 800; naturalHeight = 800; width = 800; height = 800; onload?: () => void; set src(_value: string) { queueMicrotask(() => this.onload?.()); } });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage: draw, fillRect: fill } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,Zml0");
+    vi.stubGlobal("fetch", vi.fn(async (input) => {
+        const url = String(input);
+        if (url.startsWith("data:") || url.startsWith("blob:")) return new Response(new Blob(["image"]));
+        if (url.endsWith("/upload/image")) return Response.json({ name: "fitted.png" });
+        if (url.endsWith("/prompt")) return Response.json({ prompt_id: "job" });
+        if (url.endsWith("/system_stats")) return Response.json({ system: { os: "nt" } });
+        throw new Error(`Unexpected ${url}`);
+    }));
+});
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+for (const [name, patch] of [ ["images", { references: [image] }], ["videos", { referenceVideos: [video] }], ["audios", { referenceAudios: [{ ...video, type: "audio/mp3" }] }], ["frame image", { firstFrame: image, videoMode: "frame" }], ["explicit frame in omni", { firstFrame: image }] ] as const) it(`rejects unsupported ${name} before any fetch`, async () => {
+    await expect(submitComfyuiVideoJob({ ...request(), ...patch })).rejects.toThrow(/槽位|首尾帧/); expect(fetch).not.toHaveBeenCalled();
+});
+for (const [name, json] of [ ["dangling loader", { ...graph(), out: { inputs: {}, _meta: { title: "output_video" } } }], ["missing filename input", graph("ref_image_01", "unsupported")], ["missing second slot", graph()] ] as const) it(`rejects ${name} before uploading`, async () => {
+    await expect(submitComfyuiVideoJob({ ...request(json), references: name === "missing second slot" ? [image, { ...image, id: "second" }] : [image] })).rejects.toThrow(/槽位/); expect(fetch).not.toHaveBeenCalled();
+});
+it("rejects blank image data instead of skipping it", async () => {
+    await expect(submitComfyuiVideoJob({ ...request(graph()), references: [{ ...image, dataUrl: " " }] })).rejects.toThrow(/参考图.*不可用/); expect(fetch).not.toHaveBeenCalled();
+});
+for (const [title, patch] of [ ["ref_video_01", { referenceVideos: [{ ...video, url: "" }] }], ["ref_audio_01", { referenceAudios: [{ ...video, url: "", type: "audio/mp3" }] }] ] as const) it(`rejects unavailable ${title} before uploading an earlier valid image`, async () => {
+    const json = { ...graph(), media: { inputs: { file: "old" }, _meta: { title } }, generate: { inputs: { first_frame: ["helper", 0], [title]: ["media", 0] } } };
+    await expect(submitComfyuiVideoJob({ ...request(json), references: [image], ...patch })).rejects.toThrow(/不可用/); expect(fetch).not.toHaveBeenCalled();
+});
+for (const title of ["ref_image_01", "first_frame"]) it(`fits the entire ${title} image and binds its value input through helper nodes`, async () => {
+    const req = request(graph(title, "value"));
+    if (title === "first_frame") { req.videoMode = "frame"; req.firstFrame = image; } else req.references = [image];
+    await expect(submitComfyuiVideoJob(req)).resolves.toMatchObject({ jobId: "job" });
+    expect(fill).toHaveBeenCalledWith(0, 0, 1280, 736); expect(draw).toHaveBeenCalledWith(expect.anything(), 272, 0, 736, 736);
+    expect(fetch).toHaveBeenCalledWith("data:image/png;base64,Zml0");
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const submitted = JSON.parse(String(post[1]?.body)).prompt;
+    expect(submitted.ref.inputs).toEqual({ value: "fitted.png" }); expect(submitted.generate.inputs.first_frame).toEqual(["helper", 0]);
+});
+it("allows prompt-only generation and prunes optional references", async () => {
+    await expect(submitComfyuiVideoJob(request(graph()))).resolves.toMatchObject({ jobId: "job" });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    expect(JSON.parse(String(post[1]?.body)).prompt.ref).toBeUndefined();
+});
+it("rejects an unmarked graph even if a reference feeds an unrelated sink", async () => {
+    const json = graph();
+    delete (json.out as { _meta?: unknown })._meta;
+    await expect(submitComfyuiVideoJob({ ...request(json), references: [image] })).rejects.toThrow(/output_video|槽位/);
+    expect(fetch).not.toHaveBeenCalled();
+});
+it("rejects duplicate reference titles before any upload", async () => {
+    const json = { ...graph(), duplicate: { inputs: { image: "old" }, _meta: { title: "ref_image_01" } } };
+    await expect(submitComfyuiVideoJob({ ...request(json), references: [image] })).rejects.toThrow(/槽位/);
+    expect(fetch).not.toHaveBeenCalled();
+});
+it("retains an image with the target aspect ratio without padding or re-encoding", async () => {
+    vi.stubGlobal("Image", class { naturalWidth = 640; naturalHeight = 368; onload?: () => void; set src(_value: string) { queueMicrotask(() => this.onload?.()); } });
+    await expect(submitComfyuiVideoJob({ ...request(graph()), references: [image] })).resolves.toMatchObject({ jobId: "job" });
+    expect(draw).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(image.dataUrl);
+});
+it("rejects a failed image decode before uploading any image", async () => {
+    vi.stubGlobal("Image", class { onerror?: () => void; set src(_value: string) { queueMicrotask(() => this.onerror?.()); } });
+    await expect(submitComfyuiVideoJob({ ...request(graph()), references: [image] })).rejects.toThrow(/参考图不可用/);
+    expect(fetch).not.toHaveBeenCalled();
+});
+it("keeps frame reference deduplication and fits both first and last images", async () => {
+    const json = { ...graph("first_frame"), last: { inputs: { image: "old" }, _meta: { title: "last_frame" } }, generate: { inputs: { first_frame: ["helper", 0], last_frame: ["last", 0] } } };
+    const req = { ...request(json), videoMode: "frame", firstFrame: image, references: [image, { ...image, id: "last" }] } as ComfyuiVideoRequest;
+    await expect(submitComfyuiVideoJob(req)).resolves.toMatchObject({ jobId: "job" });
+    expect(draw).toHaveBeenCalledTimes(2);
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const submitted = JSON.parse(String(post[1]?.body)).prompt;
+    expect(submitted.ref.inputs.image).toBe("fitted.png"); expect(submitted.last.inputs.image).toBe("fitted.png");
+});
+it("blocks upload and prompt when a selected source responds with HTTP 404", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response("missing", { status: 404 }));
+    const json = graph("ref_video_01", "file");
+    await expect(submitComfyuiVideoJob({ ...request(json), referenceVideos: [video] })).rejects.toThrow(/获取参考素材失败.*404/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+});
+it("preserves linked auxiliary inputs when a reference uses the value filename input", async () => {
+    const json = graph("ref_image_01", "value");
+    (json.ref as { inputs: Record<string, unknown> }).inputs.image = ["aux", 0];
+    json.aux = { inputs: { value: "auxiliary" } };
+    await expect(submitComfyuiVideoJob({ ...request(json), references: [image] })).resolves.toMatchObject({ jobId: "job" });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    expect(JSON.parse(String(post[1]?.body)).prompt.ref.inputs).toEqual({ value: "fitted.png", image: ["aux", 0] });
+});
+it("binds generic reference inputs on the registered model dispatcher path", async () => {
+    const req = { ...request(graph("ref_image_01", "value")), model: "omni-video-minimax-h3-fp8-4step-pdmd", references: [image] };
+    await expect(submitComfyuiVideoJob(req)).resolves.toMatchObject({ jobId: "job" });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    expect(JSON.parse(String(post[1]?.body)).prompt.ref.inputs).toEqual({ value: "fitted.png" });
+});
+it("rejects a numeric value input masquerading as an image filename slot", async () => {
+    const json = graph("ref_image_01", "value");
+    (json.ref as { inputs: Record<string, unknown> }).inputs.value = 1;
+    await expect(submitComfyuiVideoJob({ ...request(json), references: [image] })).rejects.toThrow(/槽位/);
+    expect(fetch).not.toHaveBeenCalled();
+});
