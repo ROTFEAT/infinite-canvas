@@ -43,3 +43,9 @@ it("does not request a backend in static deployments", async () => {
     control.enabled = false; await render();
     expect(control.get).not.toHaveBeenCalled(); expect(host.textContent).toContain("未启用");
 });
+it("pages through older persisted results", async () => {
+    control.get.mockResolvedValue({ ...data, offset: 0, nextOffset: 100 });
+    await render();
+    await act(async () => Array.from(host.querySelectorAll("button")).find(b => b.textContent?.replace(/\s/g, "") === "更早记录")!.click());
+    expect(control.get).toHaveBeenLastCalledWith(expect.any(AbortSignal), 100);
+});

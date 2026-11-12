@@ -297,3 +297,7 @@ curl -sk -I https://canvas.imihoo.com/api/collab/network-ip
 ## 可选共享实例配置（本 fork）
 
 需要跨浏览器共享渠道、工作流和默认参数时，见 [服务器配置部署说明](docs/SERVER_CONFIG.md)。使用独立 `docker-compose.server-config.yml` 和持久卷；默认静态部署不变。画布/素材和认证凭据不在该共享范围。
+
+## 可选双 GPU 生成队列（本 fork）
+
+使用 `docker-compose.generation-queue.yml` 与 `nginx.generation-queue.conf`，详见 [生成队列部署说明](docs/GENERATION_QUEUE.md)。默认静态部署不变；现有实例务必保留配置卷，新增 SQLite 持久卷并备份 worker 的输入和输出。

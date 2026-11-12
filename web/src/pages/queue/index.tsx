@@ -15,6 +15,7 @@ export default function QueuePage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(true);
     const [pendingAction, setPendingAction] = useState<string>();
+    const [offset, setOffset] = useState(0);
     const [refresh, setRefresh] = useState(0);
     const acting = useRef(false);
 
@@ -24,7 +25,7 @@ export default function QueuePage() {
         let timer: ReturnType<typeof setTimeout>;
         const poll = async () => {
             try {
-                const snapshot = await getGenerationQueue(AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]));
+                const snapshot = await getGenerationQueue(AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]), offset);
                 if (!controller.signal.aborted) { setData(snapshot); setError(""); }
             } catch (reason) {
                 if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "无法连接生成队列");
@@ -34,13 +35,14 @@ export default function QueuePage() {
         };
         void poll();
         return () => { controller.abort(); clearTimeout(timer); };
-    }, [refresh]);
+    }, [refresh, offset]);
 
     async function action(id: string, kind: "cancel" | "retry") {
         if (acting.current) return;
         acting.current = true; setPendingAction(id); setError("");
         try {
             await changeGenerationJob(id, kind);
+            setOffset(0);
             setRefresh(value => value + 1);
         } catch (reason) { setError(reason instanceof Error ? reason.message : "操作失败，请重试"); }
         finally { acting.current = false; setPendingAction(undefined); }
@@ -65,6 +67,11 @@ export default function QueuePage() {
                 {error && <Alert className="mb-4" type="error" showIcon title={error} />}
                 <Typography.Paragraph type="secondary">显示全部未完成任务和最近的任务记录。重试会创建新任务，原记录保留；结果也可在这里打开。画布和素材仍保存在各浏览器。</Typography.Paragraph>
                 {!loading && data.jobs.length === 0 && <Empty description="暂无生成任务，请从画布或视频创作台提交" />}
+                <Space className="mb-4">
+                    <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 100))}>较新记录</Button>
+                    <span>第 {Math.floor(offset / 100) + 1} 页</span>
+                    <Button disabled={data.nextOffset == null} onClick={() => setOffset(data.nextOffset!)}>更早记录</Button>
+                </Space>
                 <div className="space-y-4">
                     {data.jobs.map(job => {
                         const progress = job.progress;
