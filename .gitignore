@@ -20,3 +20,6 @@ web/public/plugins
 .scratch/
 .collab-cache/
 web/.collab-cache/
+# Python deployment helpers
+__pycache__/
+*.pyc
