@@ -129,3 +129,19 @@ it("rejects agent submissions while acknowledgement is pending", async () => {
     expect(harness.create).toHaveBeenCalledTimes(1);
     expect(useWorkbenchAgentStore.getState().tasks.find(task => task.id === taskId)?.status).toBe("failed");
 });
+it("preserves agent ownership when another completion refreshes a newly persisted pending job", async () => {
+    const first = deferred(); const second = deferred(); const persistence = deferred();
+    harness.poll.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+    await render(); await click();
+    harness.save.mockImplementation(async (id, value) => {
+        harness.logs.set(id, value);
+        if (value.prompt === "Agent race" && value.status === "pending") await persistence.promise;
+    });
+    let taskId: string | undefined;
+    await act(async () => { taskId = useWorkbenchAgentStore.getState().dispatchVideo({ prompt: "Agent race", run: true }); });
+    await act(async () => first.resolve({ status: "completed", result: {} }));
+    await act(async () => persistence.resolve(undefined));
+    await act(async () => second.resolve({ status: "completed", result: {} }));
+    expect(useWorkbenchAgentStore.getState().tasks.find(task => task.id === taskId)?.status).toBe("succeeded");
+    expect(harness.poll).toHaveBeenCalledTimes(2);
+});

@@ -75,6 +75,7 @@ export default function VideoPage() {
     const dragDepthRef = useRef(0);
     const activeLogIdsRef = useRef<Set<string>>(new Set());
     const submittingRef = useRef(false);
+    const submittingLogIdRef = useRef<string | undefined>(undefined);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
     const updateConfig = useConfigStore((state) => state.updateConfig);
@@ -191,6 +192,7 @@ export default function VideoPage() {
         try {
             const task = await createVideoGenerationTask(snapshot.config, snapshot.text, snapshot.references);
             const log = buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: 0, status: "pending", task });
+            submittingLogIdRef.current = log.id;
             await saveLog(log, false);
             void pollGenerationLog(log, snapshot.config, agentTaskId);
         } catch (error) {
@@ -200,6 +202,7 @@ export default function VideoPage() {
             await saveLog(buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: performance.now() - batchStartedAt, status: "failed", error: errorMessage }));
             message.error(errorMessage);
         } finally {
+            submittingLogIdRef.current = undefined;
             submittingRef.current = false;
             setSubmitting(false);
             if (!activeLogIdsRef.current.size) {
@@ -315,7 +318,7 @@ export default function VideoPage() {
 
     const resumePendingLogs = (items: GenerationLog[]) => {
         for (const log of items) {
-            if (log.status === "pending" && log.task) void pollGenerationLog(log);
+            if (log.status === "pending" && log.task && log.id !== submittingLogIdRef.current) void pollGenerationLog(log);
         }
     };
 
