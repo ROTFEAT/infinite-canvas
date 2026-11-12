@@ -42,6 +42,16 @@ describe("video tool configuration", () => {
         ],
     };
 
+    it.each(["768x768", "1024x1024"])("preserves persisted square %s through generation config in both modes", (size) => {
+        for (const [modelId, videoMode] of [[sourceModel, "frame"], ["h3-ref2va-nvfp4-community20", "omni"]] as const) {
+            const metadata = JSON.parse(JSON.stringify({ modelId, size, videoMode }));
+            const result = buildGenerationConfig(config, makeNode(CanvasNodeType.Video, metadata), "video");
+            expect(result.size).toBe(size);
+            expect(result.model).toBe(modelId);
+            expect(result.videoMode).toBe(videoMode);
+        }
+    });
+
     it("checks readiness on the tool host even when the source model host is unconfigured", () => {
         const node = makeNode(CanvasNodeType.Video, { channelId: "tool-host", workflowId: "face-tool", modelId: encodeChannelModel("source-host", sourceModel), videoMode: "frame" });
         const result = buildGenerationConfig(config, node, "video");

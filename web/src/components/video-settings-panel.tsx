@@ -13,13 +13,15 @@ import {
     getDslMiddleSize,
 } from "@/services/api/models";
 
+export type VideoAspect = "16:9" | "9:16" | "1:1";
+
 export type MiniMaxVideoTier = {
     landscapeW: number;
     landscapeH: number;
 };
 
 /**
- * MiniMax H3 官方支持的 32 整数倍尺寸档位（12 档预设，0.4 MP ~ 2.0 MP）
+ * MiniMax H3 官方支持的 32 整数倍尺寸档位（12 档横竖屏及 2 档方形预设）
  */
 export const MINIMAX_VIDEO_SIZE_TIERS: MiniMaxVideoTier[] = [
     { landscapeW: 864, landscapeH: 480 },
@@ -34,13 +36,17 @@ export const MINIMAX_VIDEO_SIZE_TIERS: MiniMaxVideoTier[] = [
     { landscapeW: 1664, landscapeH: 928 },
     { landscapeW: 1824, landscapeH: 1024 },
     { landscapeW: 1920, landscapeH: 1088 },
+    { landscapeW: 768, landscapeH: 768 },
+    { landscapeW: 1024, landscapeH: 1024 },
 ];
 
 export const quickSecondOptions = [5, 10, 15];
 
 export const videoSecondOptions = quickSecondOptions.map((value) => String(value));
 export const videoResolutionOptions = [{ value: "720", label: "720p" }];
-export const videoSizeOptions = MINIMAX_VIDEO_SIZE_TIERS.flatMap((tier) => [
+export const videoSizeOptions = MINIMAX_VIDEO_SIZE_TIERS.flatMap((tier) => tier.landscapeW === tier.landscapeH ? [
+    { value: `${tier.landscapeW}x${tier.landscapeH}`, label: `1:1 · ${tier.landscapeW}×${tier.landscapeH}`, width: tier.landscapeW, height: tier.landscapeH },
+] : [
     { value: `${tier.landscapeW}x${tier.landscapeH}`, label: `16:9 · ${tier.landscapeW}×${tier.landscapeH}`, width: tier.landscapeW, height: tier.landscapeH },
     { value: `${tier.landscapeH}x${tier.landscapeW}`, label: `9:16 · ${tier.landscapeH}×${tier.landscapeW}`, width: tier.landscapeH, height: tier.landscapeW },
 ]);
@@ -93,6 +99,10 @@ export function VideoSettingsPanel({
     const currentSize = normalizeVideoSizeValue(rawSize, profile);
     const { width: currentW, height: currentH, aspect, tier: selectedTier } = parseVideoSize(currentSize, sizeTiers);
 
+    const visibleTiers = sizeTiers.filter((tier) => (tier.landscapeW === tier.landscapeH) === (aspect === "1:1"));
+    const aspects: VideoAspect[] = sizeTiers.some((tier) => tier.landscapeW === tier.landscapeH) ? ["16:9", "9:16", "1:1"] : ["16:9", "9:16"];
+    const aspectLabels = { "16:9": "横屏", "9:16": "竖屏", "1:1": "方形" };
+
     // 动态时长能力配置
     const durationConfig = profile.capabilityConfig.duration;
     const minDuration = durationConfig?.min ?? 1;
@@ -119,10 +129,15 @@ export function VideoSettingsPanel({
         onConfigChange?.("size", nextSize);
     };
 
-    const handleSwitchAspect = (nextAspect: "16:9" | "9:16") => {
+    const handleSwitchAspect = (nextAspect: VideoAspect) => {
         if (nextAspect === aspect) return;
-        const nextW = nextAspect === "16:9" ? selectedTier.landscapeW : selectedTier.landscapeH;
-        const nextH = nextAspect === "16:9" ? selectedTier.landscapeH : selectedTier.landscapeW;
+        const candidates = sizeTiers.filter((tier) => (tier.landscapeW === tier.landscapeH) === (nextAspect === "1:1"));
+        if (!candidates.length) return;
+        const area = currentW * currentH;
+        const nextTier = candidates.reduce((closest, tier) =>
+            Math.abs(tier.landscapeW * tier.landscapeH - area) < Math.abs(closest.landscapeW * closest.landscapeH - area) ? tier : closest);
+        const nextW = nextAspect === "9:16" ? nextTier.landscapeH : nextTier.landscapeW;
+        const nextH = nextAspect === "9:16" ? nextTier.landscapeW : nextTier.landscapeH;
         const nextSize = `${nextW}x${nextH}`;
         onParamChange?.({ size: nextSize });
         onConfigChange?.("size", nextSize);
@@ -183,44 +198,33 @@ export function VideoSettingsPanel({
                     </div>
                 </SettingGroup>
 
-                {/* 1. 比例切换：16:9 横屏 vs 9:16 竖屏 */}
+                {/* 1. 比例切换：由工作流支持的尺寸决定 */}
                 <SettingGroup title="视频宽高比" color={theme.node.muted}>
-                    <div className="grid grid-cols-2 gap-2">
-                        <button
-                            type="button"
-                            className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-xl border text-xs font-medium transition hover:opacity-85"
-                            style={{
-                                borderColor: aspect === "16:9" ? theme.node.text : theme.node.stroke,
-                                background: aspect === "16:9" ? (theme.mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
-                                color: theme.node.text,
-                            }}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            onClick={() => handleSwitchAspect("16:9")}
-                        >
-                            <span className="inline-block h-2.5 w-4 rounded-sm border-2" style={{ borderColor: theme.node.text }} />
-                            <span>16:9 横屏</span>
-                        </button>
-                        <button
-                            type="button"
-                            className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-xl border text-xs font-medium transition hover:opacity-85"
-                            style={{
-                                borderColor: aspect === "9:16" ? theme.node.text : theme.node.stroke,
-                                background: aspect === "9:16" ? (theme.mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
-                                color: theme.node.text,
-                            }}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            onClick={() => handleSwitchAspect("9:16")}
-                        >
-                            <span className="inline-block h-4 w-2.5 rounded-sm border-2" style={{ borderColor: theme.node.text }} />
-                            <span>9:16 竖屏</span>
-                        </button>
+                    <div className={`grid ${aspects.length === 3 ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
+                        {aspects.map((value) => (
+                            <button
+                                key={value}
+                                type="button"
+                                className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-xl border text-xs font-medium transition hover:opacity-85"
+                                style={{
+                                    borderColor: aspect === value ? theme.node.text : theme.node.stroke,
+                                    background: aspect === value ? (theme.mode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)") : "transparent",
+                                    color: theme.node.text,
+                                }}
+                                onMouseDown={(event) => event.stopPropagation()}
+                                onClick={() => handleSwitchAspect(value)}
+                            >
+                                <span className={`inline-block rounded-sm border-2 ${value === "16:9" ? "h-2.5 w-4" : value === "9:16" ? "h-4 w-2.5" : "h-3 w-3"}`} style={{ borderColor: theme.node.text }} />
+                                <span>{value} {aspectLabels[value]}</span>
+                            </button>
+                        ))}
                     </div>
                 </SettingGroup>
 
                 {/* 2. 尺寸清晰度档位：动态呈现硬件对齐规格 */}
-                <SettingGroup title={`生成尺寸规格 (${aspect === "16:9" ? "横屏" : "竖屏"}，当前: ${currentW} × ${currentH})`} color={theme.node.muted}>
+                <SettingGroup title={`生成尺寸规格 (${aspectLabels[aspect]}，当前: ${currentW} × ${currentH})`} color={theme.node.muted}>
                     <div className="grid grid-cols-3 gap-2">
-                        {sizeTiers.map((tier) => {
+                        {visibleTiers.map((tier) => {
                             const itemW = aspect === "16:9" ? tier.landscapeW : tier.landscapeH;
                             const itemH = aspect === "16:9" ? tier.landscapeH : tier.landscapeW;
                             const isSelected = selectedTier.landscapeW === tier.landscapeW && selectedTier.landscapeH === tier.landscapeH;
@@ -338,22 +342,25 @@ export function normalizeVideoResolutionValue(_value?: string) {
 export function parseVideoSize(
     sizeStr?: string,
     tiers: MiniMaxVideoTier[] = MINIMAX_VIDEO_SIZE_TIERS,
-): { width: number; height: number; aspect: "16:9" | "9:16"; tier: MiniMaxVideoTier } {
+): { width: number; height: number; aspect: VideoAspect; tier: MiniMaxVideoTier } {
     const availableTiers = tiers.length > 0 ? tiers : MINIMAX_VIDEO_SIZE_TIERS;
-    const fallbackTier = availableTiers[Math.floor(availableTiers.length / 2)] || availableTiers[0] || MINIMAX_VIDEO_SIZE_TIERS[0];
+    const rectangularTiers = availableTiers.filter((tier) => tier.landscapeW !== tier.landscapeH);
+    const defaultTiers = rectangularTiers.length ? rectangularTiers : availableTiers;
+    const fallbackTier = defaultTiers[Math.floor(defaultTiers.length / 2)];
     const raw = (sizeStr || "").trim().toLowerCase();
     const match = raw.match(/^(\d+)\s*[x×]\s*(\d+)$/);
     const w = Number(match?.[1]) || fallbackTier.landscapeW;
     const h = Number(match?.[2]) || fallbackTier.landscapeH;
 
-    const isLandscape = w >= h;
-    const aspect: "16:9" | "9:16" = isLandscape ? "16:9" : "9:16";
+    const hasSquares = availableTiers.some((tier) => tier.landscapeW === tier.landscapeH);
+    const aspect: VideoAspect = w === h && hasSquares ? "1:1" : w >= h ? "16:9" : "9:16";
     const longSide = Math.max(w, h);
     const shortSide = Math.min(w, h);
 
     let matchedTier = fallbackTier;
     let minDiff = Infinity;
     for (const t of availableTiers) {
+        if ((t.landscapeW === t.landscapeH) !== (aspect === "1:1")) continue;
         const diff = Math.abs(t.landscapeW - longSide) + Math.abs(t.landscapeH - shortSide);
         if (diff < minDiff) {
             minDiff = diff;

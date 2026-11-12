@@ -291,3 +291,23 @@ for (const selection of ["model", "workflow", "default"] as const) it(`preserves
     expect(submitted["105:104"].inputs["ref_videos.ref_video_2"]).toEqual(["h3_ref_video_01_components", 0]);
     expect(submitted["105:104"].inputs["ref_video_audios.ref_video_audio_2"]).toEqual(["h3_ref_video_01_components", 1]);
 });
+
+for (const size of ["768x768", "1024x1024"]) for (const mode of ["frame", "omni"] as const) it(`submits exact ${size} dimensions in native ${mode} graph`, async () => {
+    const model = mode === "frame" ? "frame-video-minimax-h3-fp8" : "h3-ref2va-nvfp4-community20";
+    const req = request(mode === "frame" ? fl2Graph : ref2vaGraph);
+    req.config.size = size;
+    req.config.videoMode = mode;
+    await submitComfyuiVideoJob({ ...req, model, videoMode: mode, ...(mode === "frame" ? { firstFrame: image, lastFrame: { ...image, id: "last" } } : { references: [image] }) });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const submitted = JSON.parse(String(post[1]?.body)).prompt;
+    for (const title of ["width", "height"]) {
+        const node = (Object.values(submitted) as { _meta?: { title?: string }; inputs: Record<string, unknown> }[]).find((node) => node._meta?.title === title);
+        expect(node).toBeDefined();
+        expect(Number(node!.inputs.Number ?? node!.inputs.value ?? node!.inputs[title])).toBe(Number(size.split("x")[0]));
+    }
+    if (mode === "omni") {
+        expect(submitted["105:6"].inputs.unet_name).toBe("MiniMax_H3_Ref2VA_pruned_nvfp4.safetensors");
+        expect(submitted["105:104"].inputs.ref_image_size).toBe("match");
+        expect(draw).not.toHaveBeenCalled();
+    }
+});

@@ -64,7 +64,7 @@ describe("Workflow Model Profiles (MiniMax H3 11 Video Models)", () => {
         expect(profile?.capabilityConfig.references.maxVideos).toBe(3);
         expect(profile?.capabilityConfig.references.maxAudios).toBe(3);
         expect(profile?.capabilityConfig.size?.values).toEqual(MINIMAX_H3_SIZES);
-        expect(profile?.capabilityConfig.size?.values.length).toBe(24);
+        expect(profile?.capabilityConfig.size?.values.length).toBe(26);
         expect(profile?.capabilityConfig.size?.default).toBe("1344x768");
         expect(profile?.capabilityConfig.duration?.tags).toEqual([5, 10, 15]);
     });
@@ -147,6 +147,19 @@ describe("Workflow Model Profiles (MiniMax H3 11 Video Models)", () => {
         expect(frameSelfLift.steps).toBe(6);
         expect(frameSelfLift.capabilityConfig.references.maxImages).toBe(2);
         expect(frameSelfLift.capabilityConfig.size?.values).toEqual(MINIMAX_H3_SIZES);
+    });
+
+    it("allows both square presets in every H3 profile without changing rectangular defaults", () => {
+        for (const profile of BUILTIN_VIDEO_WORKFLOW_MODELS) {
+            expect(profile.capabilityConfig.size?.allowCustom).toBe(false);
+            expect(profile.capabilityConfig.size?.default).toBe("1344x768");
+            for (const size of ["768x768", "1024x1024"]) {
+                expect(() => validateModelExecution(profile, { size })).not.toThrow();
+            }
+        }
+        const mixed = ["864x480", "480x864", "768x768", "1024x1024", "1344x768", "768x1344", "1920x1088", "1088x1920"];
+        expect(getDslMiddleSize(mixed, "16:9")).toBe("1344x768");
+        expect(getDslMiddleSize(mixed, "9:16")).toBe("768x1344");
     });
 
     it("computes dynamic middle size via getDslMiddleSize for both 16:9 and 9:16", () => {

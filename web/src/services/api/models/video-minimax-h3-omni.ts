@@ -1,7 +1,7 @@
 import type { WorkflowModelProfile } from "./types";
 
 /**
- * MiniMax H3 官方支持的 32 整数倍尺寸对齐档位（覆盖 0.4 MP ~ 2.0 MP 共 12 档）
+ * MiniMax H3 官方支持的 32 整数倍尺寸对齐档位（12 档横竖屏及 2 档方形）
  */
 export const MINIMAX_H3_SIZES: string[] = [
     "864x480", "480x864",     // 0.4 MP
@@ -16,6 +16,7 @@ export const MINIMAX_H3_SIZES: string[] = [
     "1664x928", "928x1664",   // 1.5 MP
     "1824x1024", "1024x1824", // 1.8 MP
     "1920x1088", "1088x1920", // 2.0 MP
+    "768x768", "1024x1024", // 1:1 方形
 ];
 
 /**
@@ -30,6 +31,7 @@ export function getDslMiddleSize(values?: string[], aspect: "16:9" | "9:16" = "1
         if (!match) continue;
         const w = Number(match[1]);
         const h = Number(match[2]);
+        if (w === h) continue;
         const landscapeW = Math.max(w, h);
         const landscapeH = Math.min(w, h);
         const key = `${landscapeW}x${landscapeH}`;

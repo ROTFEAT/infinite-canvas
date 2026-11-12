@@ -1,4 +1,6 @@
 import * as React from "react";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -14,6 +16,7 @@ import {
     MINIMAX_VIDEO_SIZE_TIERS,
 } from "../video-settings-panel";
 import {
+    BUILTIN_WORKFLOW_MODELS,
     videoMinimaxH3OmniProfile,
     videoMinimaxH3FrameProfile,
 } from "@/services/api/models";
@@ -21,7 +24,8 @@ import {
 describe("Video Settings Panel DSL & Sizing Helpers", () => {
     it("extractVideoSizeTiers dynamically parses discrete dimension pairs into sorted landscape tiers", () => {
         const tiers = extractVideoSizeTiers(videoMinimaxH3OmniProfile.capabilityConfig.size?.values);
-        expect(tiers).toHaveLength(12);
+        expect(tiers).toHaveLength(14);
+        expect(tiers.filter((tier) => tier.landscapeW !== tier.landscapeH)).toHaveLength(12);
         expect(tiers[0]).toEqual({ landscapeW: 864, landscapeH: 480 });
         expect(tiers[tiers.length - 1]).toEqual({ landscapeW: 1920, landscapeH: 1088 });
     });
@@ -149,5 +153,83 @@ describe.each([true, false])("Video Settings Panel badge (showTitle=%s)", (showT
     it("keeps the existing mode profile fallback without an explicit model", () => {
         expect(badge({ videoMode: "frame" })).toBe(videoMinimaxH3FrameProfile.name);
         expect(badge()).toBe(videoMinimaxH3OmniProfile.name);
+    });
+});
+
+
+describe("square video presets", () => {
+    let root: Root;
+    let host: HTMLDivElement;
+    beforeEach(() => {
+        vi.stubGlobal("React", React);
+        vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+        host = document.createElement("div");
+        document.body.append(host);
+        root = createRoot(host);
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        host.remove();
+        vi.unstubAllGlobals();
+    });
+    function mount(props: Partial<VideoSettingsPanelProps> = {}) {
+        act(() => root.render(React.createElement(VideoSettingsPanel, { theme: canvasThemes.light, ...props })));
+    }
+    function click(label: string) {
+        const button = Array.from(host.querySelectorAll("button")).find((item) => item.textContent?.replace(/\s/g, "") === label.replace(/\s/g, ""));
+        expect(button, label).toBeDefined();
+        act(() => button!.click());
+    }
+    it.each(["768x768", "1024x1024"])("normalizes, parses and labels %s as square", (size) => {
+        expect(normalizeVideoSizeValue(size)).toBe(size);
+        for (const profile of [videoMinimaxH3OmniProfile, videoMinimaxH3FrameProfile]) {
+            expect(normalizeVideoSizeValue(size, profile)).toBe(size);
+            const side = Number(size.split("x")[0]);
+            expect(parseVideoSize(size)).toMatchObject({ width: side, height: side, aspect: "1:1" });
+            expect(videoSizeLabel(size, profile)).toBe(`${side}×${side} (1:1)`);
+        }
+    });
+    it("selects closest-area square, persists it, and keeps it on mode changes", () => {
+        let params: Partial<VideoSettingsPanelProps> = { size: "1344x768" };
+        const onConfigChange = vi.fn();
+        const onParamChange = vi.fn((patch) => { params = { ...params, ...patch }; mount({ ...params, onParamChange, onConfigChange }); });
+        mount({ ...params, onParamChange, onConfigChange });
+        expect(host.textContent).not.toContain("1024 × 1024");
+        expect(host.querySelectorAll('input[type="number"]')).toHaveLength(0);
+        click("1:1 方形");
+        expect(onParamChange).toHaveBeenLastCalledWith({ size: "1024x1024" });
+        expect(onConfigChange).toHaveBeenLastCalledWith("size", "1024x1024");
+        expect(host.textContent).toContain("方形，当前: 1024 × 1024");
+        expect(host.textContent).not.toContain("1344 × 768");
+        click("768 × 768");
+        click("首尾帧 (Frame)首帧 / 首尾帧插帧");
+        expect(host.textContent).toContain("方形，当前: 768 × 768");
+        click("16:9 横屏");
+        expect(onParamChange).toHaveBeenLastCalledWith({ size: "1056x608" });
+        click("9:16 竖屏");
+        expect(onParamChange).toHaveBeenLastCalledWith({ size: "608x1056" });
+    });
+    it("selects the smaller square when switching from a low-area rectangle", () => {
+        const onParamChange = vi.fn();
+        mount({ size: "864x480", onParamChange });
+        click("1:1 方形");
+        expect(onParamChange).toHaveBeenCalledWith({ size: "768x768" });
+    });
+    it("keeps the rectangular parser default and all twelve rectangular tiers", () => {
+        expect(parseVideoSize()).toMatchObject({ width: 1344, height: 768, aspect: "16:9" });
+        for (const tier of MINIMAX_VIDEO_SIZE_TIERS.filter((tier) => tier.landscapeW !== tier.landscapeH)) {
+            expect(parseVideoSize(`${tier.landscapeW}x${tier.landscapeH}`)).toMatchObject({ width: tier.landscapeW, height: tier.landscapeH, aspect: "16:9" });
+            expect(parseVideoSize(`${tier.landscapeH}x${tier.landscapeW}`)).toMatchObject({ width: tier.landscapeH, height: tier.landscapeW, aspect: "9:16" });
+        }
+    });
+    it("does not offer square for a profile with only rectangular presets", () => {
+        const profile = { ...videoMinimaxH3OmniProfile, id: "test-rectangular-video", capabilityConfig: { ...videoMinimaxH3OmniProfile.capabilityConfig, size: { parameter: "size" as const, values: ["864x480", "480x864"], allowCustom: false } } };
+        BUILTIN_WORKFLOW_MODELS.push(profile);
+        try {
+            mount({ modelId: profile.id });
+            expect(host.textContent).not.toContain("1:1");
+            expect(host.textContent).toContain("864 × 480");
+            expect(normalizeVideoSizeValue("768x768", profile)).toBe("864x480");
+        } finally { BUILTIN_WORKFLOW_MODELS.splice(BUILTIN_WORKFLOW_MODELS.indexOf(profile), 1); }
     });
 });
