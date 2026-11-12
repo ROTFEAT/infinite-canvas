@@ -16,7 +16,11 @@ async function worker() {
             return;
         }
         let body = "";
-        for await (const c of req) body += c;
+        try {
+            for await (const c of req) body += c;
+        } catch {
+            return;
+        }
         if (req.url === "/upload/image") {
             state.upload = body;
             res.setHeader("content-type", "application/json");
@@ -48,6 +52,16 @@ async function worker() {
             state.interrupt = data;
             state.running = state.running.filter((x) => x[1] !== data.prompt_id);
         } else if (req.url.startsWith("/view")) {
+            if (state.mediaDelay) {
+                res.writeHead(200, { "content-type": "video/mp4", "content-length": "8" });
+                res.write("part");
+                const timer = setTimeout(() => res.end("tail"), state.mediaDelay);
+                res.on("close", () => {
+                    state.mediaClosed = !res.writableFinished;
+                    clearTimeout(timer);
+                });
+                return;
+            }
             if (req.headers.range) {
                 res.writeHead(206, { "content-type": "video/mp4", "content-range": "bytes 0-3/10", "accept-ranges": "bytes", "content-length": "4" });
                 res.end("part");
@@ -292,4 +306,29 @@ test("output views preserve HTTP byte ranges for video playback", async (t) => {
     assert.equal(response.headers.get("accept-ranges"), "bytes");
     assert.equal(response.headers.get("content-length"), "4");
     assert.equal(await response.text(), "part");
+});
+
+test("media download and upload outlive control request deadline", async (t) => {
+    const f = await fixture(t, { requestTimeoutMs: 60, mediaTimeoutMs: 1000 });
+    f.workers[0].state.mediaDelay = 180;
+    const response = await fetch(f.app.url + "/view?filename=clip.mp4&type=output&subfolder=__worker__/gpu0/");
+    assert.equal(await response.text(), "parttail");
+    async function* multipart() {
+        yield '--x\r\nContent-Disposition: form-data; name="image"; filename="a.png"\r\n\r\n';
+        await new Promise((r) => setTimeout(r, 180));
+        yield "bytes\r\n--x--\r\n";
+    }
+    const upload = await fetch(f.app.url + "/upload/image", { method: "POST", headers: { Origin: "http://canvas.test", "content-type": "multipart/form-data; boundary=x" }, body: multipart(), duplex: "half" });
+    assert.equal(upload.status, 200);
+    assert.match(f.workers[0].state.upload, /bytes/);
+});
+test("downstream media disconnect immediately cancels upstream transfer", async (t) => {
+    const f = await fixture(t, { requestTimeoutMs: 3000, mediaTimeoutMs: 3000 });
+    f.workers[0].state.mediaDelay = 1000;
+    const controller = new AbortController();
+    const response = await fetch(f.app.url + "/view?filename=clip.mp4&type=output&subfolder=__worker__/gpu0/", { signal: controller.signal });
+    await response.body.getReader().read();
+    controller.abort();
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(f.workers[0].state.mediaClosed, true);
 });

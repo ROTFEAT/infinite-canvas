@@ -9,7 +9,7 @@ import { WebSocket, WebSocketServer } from "ws";
 const ACTIVE = ["queued", "dispatching", "running"];
 const bad = (message, status = 400) => Object.assign(new Error(message), { status });
 const validId = (id) => typeof id === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(id);
-export async function createGenerationQueue({ dbPath, workers: configs, allowedOrigin, pollMs = 2000, publicPrefix = "/api/generation", requestTimeoutMs = 10000 }) {
+export async function createGenerationQueue({ dbPath, workers: configs, allowedOrigin, pollMs = 2000, publicPrefix = "/api/generation", requestTimeoutMs = 10000, mediaTimeoutMs = 600000 }) {
     if (!allowedOrigin || new URL(allowedOrigin).origin !== allowedOrigin) throw Error("GENERATION_ALLOWED_ORIGIN must be an exact origin");
     if (!configs?.length || configs.some((w) => !validId(w.id) || !["http:", "https:"].includes(new URL(w.url).protocol))) throw Error("Invalid fixed workers");
     if (new Set(configs.map((w) => w.id)).size !== configs.length) throw Error("Duplicate worker IDs");
@@ -44,7 +44,7 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
     const queueStatus = () => ({ type: "status", data: { status: { exec_info: { queue_remaining: active().length } } } });
     const notify = () => broadcast(queueStatus());
     async function request(w, path, options = {}) {
-        const response = await fetch(w.url.replace(/\/$/, "") + path, { ...options, signal: AbortSignal.timeout(requestTimeoutMs) });
+        const response = await fetch(w.url.replace(/\/$/, "") + path, { ...options, signal: options.signal || AbortSignal.timeout(requestTimeoutMs) });
         if (!response.ok) {
             const detail = (await response.text()).slice(0, 1500);
             throw bad(`Worker ${w.id} returned ${response.status}: ${detail}`, response.status);
@@ -243,6 +243,22 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
         };
     }
     const server = createServer(async (req, res) => {
+        let cleanupMedia = () => {};
+        const mediaSignal = () => {
+            const controller = new AbortController();
+            const abort = () => controller.abort();
+            const close = () => {
+                if (!res.writableFinished) abort();
+            };
+            req.once("aborted", abort);
+            res.once("close", close);
+            cleanupMedia = () => {
+                req.off("aborted", abort);
+                res.off("close", close);
+            };
+            if (req.aborted || res.destroyed) abort();
+            return AbortSignal.any([controller.signal, AbortSignal.timeout(mediaTimeoutMs)]);
+        };
         const respond = (data, status = 200) => {
             res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
             res.end(JSON.stringify(data));
@@ -260,7 +276,7 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
                 if (Number(req.headers["content-length"]) > 100 * 1024 * 1024) throw bad("Request body too large", 413);
                 const upload = boundedBody(req, 100 * 1024 * 1024);
                 const w = await healthy();
-                const response = await request(w, path, { method: "POST", headers: { "content-type": req.headers["content-type"] }, body: upload, duplex: "half" });
+                const response = await request(w, path, { method: "POST", headers: { "content-type": req.headers["content-type"] }, body: upload, duplex: "half", signal: mediaSignal() });
                 respond(await response.json());
                 return;
             }
@@ -277,7 +293,7 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
                     if (!url.searchParams.get("filename")) throw bad("filename is required");
                 }
                 w ||= await healthy();
-                const response = await request(w, path + url.search, { headers: req.headers.range ? { range: req.headers.range } : {} });
+                const response = await request(w, path + url.search, { headers: req.headers.range ? { range: req.headers.range } : {}, ...(path === "/view" ? { signal: mediaSignal() } : {}) });
                 const headers = { "content-type": response.headers.get("content-type") || "application/octet-stream" };
                 for (const key of ["content-range", "accept-ranges", "content-length"]) if (response.headers.has(key)) headers[key] = response.headers.get(key);
                 res.writeHead(response.status, headers);
@@ -364,12 +380,14 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
             const result = await (immediate ? handle() : lock(handle));
             respond(result);
         } catch (error) {
-            if (res.headersSent) {
+            if (res.headersSent || res.destroyed) {
                 res.destroy();
                 return;
             }
             const failure = error.cause?.status ? error.cause : error;
             respond({ error: failure.status ? failure.message : "Queue service failed; please retry the request" }, failure.status || 500);
+        } finally {
+            cleanupMedia();
         }
     });
     server.on("upgrade", (req, socket, head) => {
