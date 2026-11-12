@@ -22,6 +22,7 @@ import { boolConfig, modelOptionLabel, useConfigStore, useEffectiveConfig, type 
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { ReferenceImage } from "@/types/image";
 import i18n from "@/i18n";
+import { GENERATION_QUEUE_ENABLED } from "@/constant/runtime-config";
 
 type GeneratedVideo = {
     id: string;
@@ -73,6 +74,7 @@ export default function VideoPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dragDepthRef = useRef(0);
     const activeLogIdsRef = useRef<Set<string>>(new Set());
+    const submittingRef = useRef(false);
     const config = useConfigStore((state) => state.config);
     const effectiveConfig = useEffectiveConfig();
     const updateConfig = useConfigStore((state) => state.updateConfig);
@@ -84,6 +86,7 @@ export default function VideoPage() {
     const [results, setResults] = useState<GenerationResult[]>([]);
     const [logs, setLogs] = useState<GenerationLog[]>([]);
     const [running, setRunning] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
     const [logsOpen, setLogsOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [promptDialogOpen, setPromptDialogOpen] = useState(false);
@@ -168,6 +171,7 @@ export default function VideoPage() {
         }
     };
     const generate = async () => {
+        if (submittingRef.current || (!GENERATION_QUEUE_ENABLED && (running || activeLogIdsRef.current.size))) return;
         const agentTaskId = agentTaskIdRef.current;
         agentTaskIdRef.current = undefined;
         const snapshot = buildRequestSnapshot();
@@ -175,6 +179,8 @@ export default function VideoPage() {
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", error: t("videoWorkbench.invalidParams") });
             return;
         }
+        submittingRef.current = true;
+        setSubmitting(true);
         setElapsedMs(0);
         setRunning(true);
         if (agentTaskId) updateAgentTask(agentTaskId, { status: "running", error: undefined });
@@ -193,7 +199,13 @@ export default function VideoPage() {
             if (agentTaskId) updateAgentTask(agentTaskId, { status: "failed", successCount: 0, failCount: 1, error: errorMessage });
             await saveLog(buildLog({ prompt: snapshot.text, model, config: snapshot.config, references: snapshot.references, durationMs: performance.now() - batchStartedAt, status: "failed", error: errorMessage }));
             message.error(errorMessage);
-            setRunning(false);
+        } finally {
+            submittingRef.current = false;
+            setSubmitting(false);
+            if (!activeLogIdsRef.current.size) {
+                setRunning(false);
+                setStartedAt(0);
+            }
         }
     };
 
@@ -203,7 +215,7 @@ export default function VideoPage() {
         processedCommandRef.current = videoCommand.nonce;
         clearVideoCommand();
         if (typeof videoCommand.prompt === "string") setPrompt(videoCommand.prompt);
-        if (videoCommand.run && running) {
+        if (videoCommand.run && (submittingRef.current || (!GENERATION_QUEUE_ENABLED && running))) {
             if (videoCommand.taskId) updateAgentTask(videoCommand.taskId, { status: "failed", error: t("videoWorkbench.busy") });
             return;
         }
@@ -347,7 +359,7 @@ export default function VideoPage() {
             message.error(errorMessage);
         } finally {
             activeLogIdsRef.current.delete(log.id);
-            if (!activeLogIdsRef.current.size) {
+            if (!activeLogIdsRef.current.size && !submittingRef.current) {
                 setRunning(false);
                 setStartedAt(0);
             }
@@ -456,8 +468,8 @@ export default function VideoPage() {
                         </div>
 
                         <div className="mt-auto pt-6">
-                            <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={running} disabled={!canGenerate || running} onClick={() => void generate()}>
-                                {t("workbench.generate")}
+                            <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} loading={GENERATION_QUEUE_ENABLED ? submitting : running} disabled={!canGenerate || (GENERATION_QUEUE_ENABLED ? submitting : running)} onClick={() => void generate()}>
+                                {GENERATION_QUEUE_ENABLED ? "加入生成队列" : t("workbench.generate")}
                             </Button>
                         </div>
                     </div>
