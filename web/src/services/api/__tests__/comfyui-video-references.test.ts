@@ -244,3 +244,38 @@ it("rejects REF2VA requested in frame mode even without frame inputs", async () 
     await expect(submitComfyuiVideoJob(req)).rejects.toThrow(/REF2VA.*FL2VA/);
     expect(fetch).not.toHaveBeenCalled();
 });
+
+it("preserves a shared helper with a live consumer on registered REF2VA submission", async () => {
+    const json = {
+        ...structuredClone(ref2vaGraph),
+        shared_source: { inputs: { file: "shared.mp4" } },
+        shared_helper: { inputs: { video: ["shared_source", 0] } },
+        preview: { inputs: { audio: ["shared_helper", 1] } },
+    };
+    const inputs = json["105:104"].inputs;
+    inputs["ref_videos.ref_video_0"] = ["shared_helper", 0];
+    inputs["ref_video_audios.ref_video_audio_0"] = ["shared_helper", 1];
+    await submitComfyuiVideoJob({ ...request(json), model: "h3-ref2va-nvfp4-community20" });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const submitted = JSON.parse(String(post[1]?.body)).prompt;
+    expect(submitted.shared_helper).toEqual(json.shared_helper);
+    expect(submitted.shared_source).toEqual(json.shared_source);
+    expect(submitted.preview.inputs.audio).toEqual(["shared_helper", 1]);
+    expect(submitted["105:104"].inputs["ref_videos.ref_video_0"]).toBeUndefined();
+    expect(submitted["105:104"].inputs["ref_video_audios.ref_video_audio_0"]).toBeUndefined();
+});
+
+it("preserves a live video's higher numbered ports on registered REF2VA submission", async () => {
+    const json = structuredClone(ref2vaGraph);
+    const inputs = json["105:104"].inputs as Record<string, unknown>;
+    delete inputs["ref_videos.ref_video_0"];
+    delete inputs["ref_video_audios.ref_video_audio_0"];
+    inputs["ref_videos.ref_video_2"] = ["h3_ref_video_01_components", 0];
+    inputs["ref_video_audios.ref_video_audio_2"] = ["h3_ref_video_01_components", 1];
+    await submitComfyuiVideoJob({ ...request(json), model: "h3-ref2va-nvfp4-community20", referenceVideos: [video] });
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
+    const submitted = JSON.parse(String(post[1]?.body)).prompt;
+    expect(submitted.h3_ref_video_01_components).toEqual(json.h3_ref_video_01_components);
+    expect(submitted["105:104"].inputs["ref_videos.ref_video_2"]).toEqual(["h3_ref_video_01_components", 0]);
+    expect(submitted["105:104"].inputs["ref_video_audios.ref_video_audio_2"]).toEqual(["h3_ref_video_01_components", 1]);
+});
