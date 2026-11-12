@@ -36,6 +36,7 @@ async function worker() {
                 res.writeHead(400).end(JSON.stringify({ error: "invalid workflow" }));
                 return;
             }
+            if (state.acceptDelay) await new Promise((r) => setTimeout(r, state.acceptDelay));
             state.posts.push(data);
             state.running.push([1, data.prompt_id, data.prompt, {}, []]);
             if (state.uncertain) {
@@ -47,6 +48,11 @@ async function worker() {
             state.interrupt = data;
             state.running = state.running.filter((x) => x[1] !== data.prompt_id);
         } else if (req.url.startsWith("/view")) {
+            if (req.headers.range) {
+                res.writeHead(206, { "content-type": "video/mp4", "content-range": "bytes 0-3/10", "accept-ranges": "bytes", "content-length": "4" });
+                res.end("part");
+                return;
+            }
             res.end(req.url);
             return;
         }
@@ -65,10 +71,10 @@ async function worker() {
         },
     };
 }
-async function fixture(t) {
+async function fixture(t, overrides = {}) {
     const dir = await mkdtemp(join(tmpdir(), "gen-"));
     const workers = await Promise.all([worker(), worker()]);
-    const opts = { dbPath: join(dir, "queue.sqlite"), workers: workers.map((w, i) => ({ id: `gpu${i}`, url: w.url })), allowedOrigin: "http://canvas.test", pollMs: 60000 };
+    const opts = { dbPath: join(dir, "queue.sqlite"), workers: workers.map((w, i) => ({ id: `gpu${i}`, url: w.url })), allowedOrigin: "http://canvas.test", pollMs: 60000, ...overrides };
     let app = await createGenerationQueue(opts);
     await app.listen(0);
     let url = app.url;
@@ -236,4 +242,54 @@ test("slow worker does not block durable acceptance or queue reads", async (t) =
     ]);
     assert.equal(outcome, true);
     await polling;
+});
+
+test("uncertain POST stays held until late acceptance is observable", async (t) => {
+    const f = await fixture(t, { requestTimeoutMs: 30 });
+    f.workers[0].state.acceptDelay = 180;
+    const id = (await f.api("/prompt", { prompt })).data.prompt_id;
+    await f.app.tick();
+    await f.app.tick();
+    let job = (await f.api("/jobs")).data.jobs.find((j) => j.id === id);
+    assert.equal(job.status, "dispatching");
+    assert.match(job.error, /uncertain/i);
+    assert.equal((await f.api(`/jobs/${id}/retry`, {})).status, 409);
+    await f.restart();
+    await f.app.tick();
+    assert.equal((await f.api("/jobs")).data.jobs.find((j) => j.id === id).status, "dispatching");
+    await new Promise((r) => setTimeout(r, 200));
+    await f.app.tick();
+    job = (await f.api("/jobs")).data.jobs.find((j) => j.id === id);
+    assert.equal(job.status, "running");
+    assert.equal(f.workers[0].state.posts.length, 1);
+});
+test("terminal job pagination retains active jobs and reaches older results", async (t) => {
+    const f = await fixture(t);
+    const ids = [];
+    for (let i = 0; i < 101; i++) {
+        const id = (await f.api("/prompt", { prompt })).data.prompt_id;
+        ids.push(id);
+        await f.api(`/jobs/${id}/cancel`, {});
+    }
+    const activeId = (await f.api("/prompt", { prompt })).data.prompt_id;
+    const first = (await f.api("/jobs")).data;
+    assert.equal(first.jobs.length, 101);
+    assert.equal(first.nextOffset, 100);
+    assert.equal(first.offset, 0);
+    const second = (await f.api("/jobs?offset=100")).data;
+    assert.equal(second.jobs.length, 2);
+    assert.equal(second.nextOffset, null);
+    assert.ok(second.jobs.some((j) => j.id === ids[0]));
+    assert.ok(second.jobs.some((j) => j.id === activeId));
+    assert.equal((await f.api("/jobs?offset=-1")).status, 400);
+    assert.equal((await f.api("/jobs?offset=1.5")).status, 400);
+});
+test("output views preserve HTTP byte ranges for video playback", async (t) => {
+    const f = await fixture(t);
+    const response = await fetch(f.app.url + "/view?filename=clip.mp4&type=output&subfolder=__worker__/gpu1/", { headers: { range: "bytes=0-3" } });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get("content-range"), "bytes 0-3/10");
+    assert.equal(response.headers.get("accept-ranges"), "bytes");
+    assert.equal(response.headers.get("content-length"), "4");
+    assert.equal(await response.text(), "part");
 });

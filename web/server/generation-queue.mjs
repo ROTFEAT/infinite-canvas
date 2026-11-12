@@ -111,8 +111,13 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
                     const success = history.status?.status_str === "success";
                     finish(job, success ? "succeeded" : job.cancelRequested ? "cancelled" : "failed", success ? null : history.status?.messages?.find((x) => x[0] === "execution_error")?.[1]?.exception_message || "ComfyUI execution failed", history);
                 } else if ([...(queue.queue_running || []), ...(queue.queue_pending || [])].some((x) => x[1] === job.id)) {
-                    update(job.id, { status: "running" });
+                    update(job.id, { status: "running", error: null });
                     if (job.cancelRequested) await cancelOnWorker(w, job, queue);
+                    return;
+                } else if (job.status === "dispatching") {
+                    // An empty snapshot cannot disprove a POST still validating upstream.
+                    update(job.id, { error: "Dispatch is uncertain; holding this worker until the original prompt appears. Check the worker before any manual recovery." });
+                    w.busy = true;
                     return;
                 } else {
                     finish(job, job.cancelRequested ? "cancelled" : "interrupted", job.cancelRequested ? "Cancelled by user" : "Worker no longer has this task. Retry manually to avoid duplicate execution.");
@@ -133,7 +138,10 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
                 w.busy = true;
             } catch (error) {
                 if (error.status >= 400 && error.status < 500) finish(get(next.id), "failed", error.message);
-                else w.online = false;
+                else {
+                    w.online = false;
+                    update(next.id, { error: "Dispatch is uncertain; waiting for evidence from the worker. Automatic retry is disabled." });
+                }
             }
         } catch {
             w.online = false;
@@ -269,8 +277,10 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
                     if (!url.searchParams.get("filename")) throw bad("filename is required");
                 }
                 w ||= await healthy();
-                const response = await request(w, path + url.search);
-                res.writeHead(200, { "content-type": response.headers.get("content-type") || "application/octet-stream" });
+                const response = await request(w, path + url.search, { headers: req.headers.range ? { range: req.headers.range } : {} });
+                const headers = { "content-type": response.headers.get("content-type") || "application/octet-stream" };
+                for (const key of ["content-range", "accept-ranges", "content-length"]) if (response.headers.has(key)) headers[key] = response.headers.get(key);
+                res.writeHead(response.status, headers);
                 for await (const chunk of response.body) {
                     if (res.destroyed) break;
                     if (!res.write(chunk))
@@ -300,8 +310,12 @@ export async function createGenerationQueue({ dbPath, workers: configs, allowedO
             const handle = async () => {
                 if (req.method === "GET") {
                     if (path === "/jobs") {
-                        const rows = db.prepare("SELECT * FROM jobs WHERE status IN ('queued','dispatching','running') OR id IN (SELECT id FROM jobs ORDER BY createdAt DESC,rowid DESC LIMIT 200) ORDER BY createdAt DESC,rowid DESC").all();
-                        return { jobs: rows.map(summary), workers: workers.map(({ id, online, busy }) => ({ id, online, busy })) };
+                        const offsetText = url.searchParams.get("offset") || "0";
+                        const offset = Number(offsetText);
+                        if (!/^\d+$/.test(offsetText) || !Number.isSafeInteger(offset) || offset < 0) throw bad("offset must be a nonnegative safe integer");
+                        const finished = db.prepare("SELECT * FROM jobs WHERE status NOT IN ('queued','dispatching','running') ORDER BY createdAt DESC,rowid DESC LIMIT 101 OFFSET ?").all(offset);
+                        const rows = [...active(), ...finished.slice(0, 100)];
+                        return { jobs: rows.map(summary), offset, nextOffset: finished.length > 100 ? offset + 100 : null, workers: workers.map(({ id, online, busy }) => ({ id, online, busy })) };
                     }
                     if (path === "/prompt") return { exec_info: { queue_remaining: active().length } };
                     if (path === "/queue") {
