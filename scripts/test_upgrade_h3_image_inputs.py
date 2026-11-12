@@ -1,4 +1,5 @@
 import unittest
+import json
 from upgrade_h3_image_inputs import upgrade
 
 class UpgradeTests(unittest.TestCase):
@@ -17,5 +18,20 @@ class UpgradeTests(unittest.TestCase):
         again,n=upgrade(new)
         self.assertEqual(n,0)
         self.assertEqual(again,new)
+
+    def test_string_graph_remains_string_and_conflicts_do_not_mutate_input(self):
+        graph={'1':{'class_type':'MiniMaxH3ImageToVideo','inputs':{}}}
+        config={'channels':[{'id':'h3-server','comfyuiVideoWorkflow':{'json':json.dumps(graph)}}]}
+        upgraded,count=upgrade(config)
+        self.assertEqual(count,1)
+        self.assertIsInstance(upgraded['channels'][0]['comfyuiVideoWorkflow']['json'],str)
+        for conflict in [
+            {'x':{'_meta':{'title':'ref_image_01'},'inputs':{'image':'existing.png'}}},
+            {'h3_ref_image_01':{'inputs':{}}},
+        ]:
+            bad={'channels':[{'id':'h3-server','comfyuiVideoWorkflow':{'json':dict(graph,**conflict)}}]}
+            before=json.dumps(bad)
+            with self.assertRaises(ValueError):upgrade(bad)
+            self.assertEqual(json.dumps(bad),before)
 
 if __name__=='__main__': unittest.main()
