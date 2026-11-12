@@ -80,12 +80,12 @@ export default function QueuePage() {
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <Space wrap>
                                     <Typography.Text code title={job.id}>{job.id.slice(0, 12)}</Typography.Text>
-                                    <Tag>{labels[job.status]}</Tag>
+                                    <Tag>{job.cancelRequested && active.has(job.status) ? "正在取消" : labels[job.status]}</Tag>
                                     {job.workerId && <Typography.Text>{job.workerId}</Typography.Text>}
                                     <Typography.Text type="secondary">{new Date(job.createdAt).toLocaleString()}</Typography.Text>
                                 </Space>
                                 <Space>
-                                    {active.has(job.status) && <Button size="small" disabled={!!pendingAction} onClick={() => void action(job.id, "cancel")}>取消</Button>}
+                                    {active.has(job.status) && <Button size="small" disabled={!!pendingAction || job.cancelRequested} onClick={() => void action(job.id, "cancel")}>取消</Button>}
                                     {retryable.has(job.status) && <Button size="small" disabled={!!pendingAction} onClick={() => void action(job.id, "retry")}>重试</Button>}
                                 </Space>
                             </div>

@@ -49,3 +49,9 @@ it("pages through older persisted results", async () => {
     await act(async () => Array.from(host.querySelectorAll("button")).find(b => b.textContent?.replace(/\s/g, "") === "更早记录")!.click());
     expect(control.get).toHaveBeenLastCalledWith(expect.any(AbortSignal), 100);
 });
+it("shows durable cancellation intent while the worker is unavailable", async () => {
+    control.get.mockResolvedValue({ workers: [], jobs: [{ ...data.jobs[0], cancelRequested: true }] });
+    await render();
+    expect(host.textContent).toContain("正在取消");
+    expect(Array.from(host.querySelectorAll("button")).find(b => b.textContent?.replace(/\s/g, "") === "取消")?.disabled).toBe(true);
+});

@@ -7,6 +7,7 @@ export interface GenerationJob {
     updatedAt: number;
     error?: string;
     retryOf?: string;
+    cancelRequested?: boolean;
     progress?: { value?: number; max?: number; node?: string };
     outputs?: { url: string; type?: string; filename: string }[];
 }
