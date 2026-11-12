@@ -238,3 +238,9 @@ it("rejects a non-NVFP4 checkpoint even with a REF2VA conditioner", async () => 
     await expect(submitComfyuiVideoJob({ ...request(json), model: "h3-ref2va-nvfp4-community20" })).rejects.toThrow(/REF2VA.*工作流/);
     expect(fetch).not.toHaveBeenCalled();
 });
+
+it("rejects REF2VA requested in frame mode even without frame inputs", async () => {
+    const req = { ...request(ref2vaGraph), model: "h3-ref2va-nvfp4-community20", videoMode: "frame" as const };
+    await expect(submitComfyuiVideoJob(req)).rejects.toThrow(/REF2VA.*FL2VA/);
+    expect(fetch).not.toHaveBeenCalled();
+});

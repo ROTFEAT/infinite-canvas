@@ -3410,12 +3410,12 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
     const channelModel = channel.models.find((model) => model.name === requestModel);
     const initialVideoMode = req.videoMode || (req.config.videoMode === "frame" ? "frame" : "omni");
     const channelId = req.channelId || req.config.channelId || channel.id;
-    const requestedRef2vaProfile = getModelProfile(rawModel)?.id === videoMinimaxH3Ref2vaNvfp4Profile.id ? videoMinimaxH3Ref2vaNvfp4Profile : undefined;
+    const requestedRef2vaModel = getModelProfile(rawModel)?.id === videoMinimaxH3Ref2vaNvfp4Profile.id ? videoMinimaxH3Ref2vaNvfp4Profile : undefined;
     const workflowId = req.workflowId || req.config.workflowId;
     const targetWorkflowItem = workflowId
         ? findWorkflow(req.config, channelId, workflowId)
-        : requestedRef2vaProfile
-          ? channel.workflows?.find((workflow) => workflow.id === requestedRef2vaProfile.id)
+        : requestedRef2vaModel
+          ? channel.workflows?.find((workflow) => workflow.id === requestedRef2vaModel.id)
         : Array.isArray(channel.workflows)
           ? getDefaultWorkflow(channel, initialVideoMode === "frame" ? "frameVideo" : "omniVideo")
           : undefined;
@@ -3423,6 +3423,7 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
         throw addComfyuiChannelContext(new ComfyuiApiError(`所选工作流「${workflowId}」不存在，请重新选择工作流后执行`), channel.name);
     }
     const isVideoTool = targetWorkflowItem?.category === "faceRefine" || targetWorkflowItem?.category === "depthVideo";
+    const requestedRef2vaProfile = isVideoTool ? undefined : requestedRef2vaModel;
     const modelProfile = requestedRef2vaProfile || (isVideoTool ? undefined : getModelProfile(req.model || targetWorkflowItem?.id || targetWorkflowItem?.name || rawModel || initialVideoMode));
     const isFrameWorkflow = targetWorkflowItem?.category === "frameVideo";
     const isFrameMode = !requestedRef2vaProfile && !isVideoTool && (modelProfile?.category === "frameVideo" || isFrameWorkflow || initialVideoMode === "frame");
@@ -3474,6 +3475,7 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
 
     try {
         if (requestedRef2vaProfile) {
+            if (initialVideoMode === "frame") throw new ComfyuiApiError("REF2VA 不支持首尾帧模式，请选择 FL2VA 首尾帧预设后执行");
             const nodes = Object.values(videoWorkflow.json) as Array<{ class_type?: string; inputs?: Record<string, unknown> }>;
             const hasReferenceConditioner = nodes.some((node) => node.class_type === "MiniMaxH3ReferenceToVideo");
             const hasRef2vaNvfp4Model = nodes.some((node) => typeof node.inputs?.unet_name === "string" && /ref2va.*nvfp4.*\.safetensors$/i.test(node.inputs.unet_name));

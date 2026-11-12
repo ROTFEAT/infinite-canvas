@@ -151,3 +151,14 @@ it("cancels an accepted tool task on the explicitly selected channel", async () 
     expect(fetch).toHaveBeenCalledWith("http://tool-host:8188/queue", expect.anything());
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).startsWith("http://original-host"))).toBe(false);
 });
+
+for (const category of ["faceRefine", "depthVideo"] as const) it(`keeps explicit ${category} independent of the inherited REF2VA model`, async () => {
+    const req = request(category, "h3-ref2va-nvfp4-community20");
+    delete req.model;
+    if (category === "depthVideo") { req.prompt = ""; req.references = []; }
+    await expect(submitComfyuiVideoJob(req)).resolves.toMatchObject({ jobId: "tool-job" });
+    const post = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/prompt"))!;
+    const submitted = JSON.parse(String(post[1]?.body)).prompt;
+    expect(submitted["4"].inputs.file).toBe("uploaded-video.mp4");
+    expect(submitted["2"].inputs.images).toEqual(["5", 0]);
+});
