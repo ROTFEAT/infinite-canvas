@@ -245,7 +245,7 @@ it("rejects REF2VA requested in frame mode even without frame inputs", async () 
     expect(fetch).not.toHaveBeenCalled();
 });
 
-it("preserves a shared helper with a live consumer on registered REF2VA submission", async () => {
+for (const selection of ["model", "workflow", "default"] as const) it(`preserves a shared helper on REF2VA submission selected by ${selection}`, async () => {
     const json = {
         ...structuredClone(ref2vaGraph),
         shared_source: { inputs: { file: "shared.mp4" } },
@@ -255,7 +255,13 @@ it("preserves a shared helper with a live consumer on registered REF2VA submissi
     const inputs = json["105:104"].inputs;
     inputs["ref_videos.ref_video_0"] = ["shared_helper", 0];
     inputs["ref_video_audios.ref_video_audio_0"] = ["shared_helper", 1];
-    await submitComfyuiVideoJob({ ...request(json), model: "h3-ref2va-nvfp4-community20" });
+    const req = request(json);
+    if (selection === "model") req.model = "h3-ref2va-nvfp4-community20";
+    else {
+        req.config.channels[0].workflows![0].id = "h3-ref2va-nvfp4-community20";
+        req.workflowId = selection === "workflow" ? "h3-ref2va-nvfp4-community20" : undefined;
+    }
+    await submitComfyuiVideoJob(req);
     const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
     const submitted = JSON.parse(String(post[1]?.body)).prompt;
     expect(submitted.shared_helper).toEqual(json.shared_helper);
@@ -265,14 +271,20 @@ it("preserves a shared helper with a live consumer on registered REF2VA submissi
     expect(submitted["105:104"].inputs["ref_video_audios.ref_video_audio_0"]).toBeUndefined();
 });
 
-it("preserves a live video's higher numbered ports on registered REF2VA submission", async () => {
+for (const selection of ["model", "workflow", "default"] as const) it(`preserves higher numbered video ports on REF2VA submission selected by ${selection}`, async () => {
     const json = structuredClone(ref2vaGraph);
     const inputs = json["105:104"].inputs as Record<string, unknown>;
     delete inputs["ref_videos.ref_video_0"];
     delete inputs["ref_video_audios.ref_video_audio_0"];
     inputs["ref_videos.ref_video_2"] = ["h3_ref_video_01_components", 0];
     inputs["ref_video_audios.ref_video_audio_2"] = ["h3_ref_video_01_components", 1];
-    await submitComfyuiVideoJob({ ...request(json), model: "h3-ref2va-nvfp4-community20", referenceVideos: [video] });
+    const req = { ...request(json), referenceVideos: [video] };
+    if (selection === "model") req.model = "h3-ref2va-nvfp4-community20";
+    else {
+        req.config.channels[0].workflows![0].id = "h3-ref2va-nvfp4-community20";
+        req.workflowId = selection === "workflow" ? "h3-ref2va-nvfp4-community20" : undefined;
+    }
+    await submitComfyuiVideoJob(req);
     const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/prompt"))!;
     const submitted = JSON.parse(String(post[1]?.body)).prompt;
     expect(submitted.h3_ref_video_01_components).toEqual(json.h3_ref_video_01_components);

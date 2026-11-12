@@ -3528,7 +3528,7 @@ export async function submitComfyuiVideoJob(req: ComfyuiVideoRequest): Promise<{
 
         const seed = req.seed !== undefined ? req.seed : generateRandomSeed() % 1_000_000_000;
         // REF2VA 的原生绑定保留共享组件及有效视频的高编号参考端口。
-        const boundWorkflow = modelProfile && !requestedRef2vaProfile
+        const boundWorkflow = modelProfile && modelProfile.id !== videoMinimaxH3Ref2vaNvfp4Profile.id
             ? dispatchComfyuiModelWorkflow(modelProfile, videoWorkflow.json, {
                   prompt: req.prompt,
                   width,
