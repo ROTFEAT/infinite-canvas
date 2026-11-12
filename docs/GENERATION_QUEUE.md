@@ -43,3 +43,7 @@
 `node --test web/server/generation-queue.test.mjs` 覆盖双 worker FIFO、重启恢复、延迟接收、失败重试、取消竞态、上游离线、历史分页、WS 进度、上传和 Range 输出路由。前端队列页和取消测试位于 `web/src/pages/queue/__tests__` 与 `web/src/services/api/__tests__`。
 
 部署后检查 `/api/generation/health`、`/api/generation/jobs`、`/queue`；提交多于 worker 数量的测试任务，确认两项执行、其余等待，重启调度器后不重复派发，分别打开结果。真实 H3 验收保持画质参数不变并记录 RAM/显存与完成时间。
+
+## 108 双卡资源实测
+
+在两张 RTX 5070 Ti 16GB、约 53GiB 内存环境，关闭中间节点缓存和锁页内存后，两项 1344×768、124 帧、24fps、20 步 H3 同时完成，分别耗时 291.582 秒和 291.234 秒。采样期间两张 GPU 均达到 100% 利用率、各约 14.3GiB 显存，观察到主机内存使用约 12–13GiB，Swap 未较测试前增加。该结果仅代表这组文生视频参数，不代表更高分辨率、更多参考视频也能维持相同占用。
