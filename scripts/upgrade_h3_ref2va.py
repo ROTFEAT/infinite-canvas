@@ -74,6 +74,9 @@ def upgrade(config):
     existing = [wf for wf in channel.get('workflows', []) if wf.get('id') == WORKFLOW_ID]
     if existing:
         if len(existing) == 1 and existing[0].get('description') == DESCRIPTION:
+            if result.get('workflowId') == WORKFLOW_ID:
+                del result['workflowId']
+                return result, True
             return result, False
         raise ValueError('REF2VA workflow ID already exists; review manually')
     if any(model.get('name') == MODEL_NAME for model in channel.get('models', [])):
@@ -92,8 +95,10 @@ def upgrade(config):
     channel.setdefault('models', []).append({'name': MODEL_NAME, 'capability': 'video',
                                            'comfyuiWorkflow': {'name': MODEL_NAME, 'json': copy.deepcopy(graph)}})
     channel['comfyuiVideoWorkflow'] = {'name': MODEL_NAME, 'json': copy.deepcopy(graph)}
-    result.update(videoModel=f'h3-server::{MODEL_NAME}', workflowId=WORKFLOW_ID,
+    result.update(videoModel=f'h3-server::{MODEL_NAME}',
                   channelId='h3-server', videoMode='omni', videoSeconds='5')
+    if result.get('workflowId') == WORKFLOW_ID:
+        del result['workflowId']
     return result, True
 
 
@@ -101,4 +106,4 @@ if __name__ == '__main__':
     envelope = json.load(sys.stdin)
     envelope['config'], changed = upgrade(envelope['config'])
     print(json.dumps(envelope, ensure_ascii=False))
-    print('Added REF2VA preset' if changed else 'REF2VA preset already present', file=sys.stderr)
+    print('Updated REF2VA configuration' if changed else 'REF2VA preset already present', file=sys.stderr)

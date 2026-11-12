@@ -6,6 +6,8 @@ COPY web/package.json web/bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --cache-dir=/root/.bun/install/cache
 COPY VERSION /app/VERSION
 COPY CHANGELOG.md /app/CHANGELOG.md
+# The REF2VA registry imports the canonical API graph shared with deployment tooling.
+COPY Comfy/Comfy-Api/workflows/h3-ref2va-nvfp4-20step.json /app/Comfy/Comfy-Api/workflows/h3-ref2va-nvfp4-20step.json
 COPY web ./
 RUN bun run build
 

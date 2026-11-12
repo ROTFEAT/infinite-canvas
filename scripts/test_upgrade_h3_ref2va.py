@@ -48,7 +48,7 @@ class Ref2VAMigrationTests(unittest.TestCase):
                 else:
                     self.assertEqual(link, [loader, 0])
         self.assertEqual(result['videoModel'], f'h3-server::{MODEL_NAME}')
-        self.assertEqual(result['workflowId'], WORKFLOW_ID)
+        self.assertNotIn('workflowId', result)
         self.assertEqual(result['custom'], 'keep')
         self.assertEqual(sum(w.get('isDefault', False) for w in channel['workflows'] if w['category'] == 'omniVideo'), 1)
 
@@ -64,6 +64,17 @@ class Ref2VAMigrationTests(unittest.TestCase):
         config['channels'][0]['workflows'].append({'id': WORKFLOW_ID, 'json': {}})
         with self.assertRaises(ValueError):
             upgrade(config)
+
+    def test_does_not_pin_other_modes_to_ref2va_and_clears_only_its_old_global_pin(self):
+        config = self.config()
+        config['workflowId'] = 'user-selected-unrelated-workflow'
+        result, _ = upgrade(config)
+        self.assertEqual(result['workflowId'], config['workflowId'])
+        result['workflowId'] = WORKFLOW_ID
+        fixed, changed = upgrade(result)
+        self.assertTrue(changed)
+        self.assertNotIn('workflowId', fixed)
+        self.assertEqual(fixed['channels'], result['channels'])
 
 
 if __name__ == '__main__':
