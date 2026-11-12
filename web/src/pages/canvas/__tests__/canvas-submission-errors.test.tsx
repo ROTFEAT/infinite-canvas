@@ -359,6 +359,41 @@ describe("canvas submission failure settlement through the page callbacks", () =
     }
 });
 
+describe("video generation frame inputs", () => {
+    for (const action of ["repeat", "retry"] as const) {
+        for (const videoMode of ["omni", "frame"] as const) {
+            it(`${action}: retains linked images and only assigns frame inputs in ${videoMode} mode`, async () => {
+                const imageUrls = ["data:image/png;base64,AA==", "data:image/png;base64,AQ=="];
+                const images = imageUrls.map((content, index) => {
+                    const storageKey = `image:reference-${index}`;
+                    harness.storedImages.set(storageKey, content);
+                    return { ...makeNode(CanvasNodeType.Image, { content, storageKey, status: "success" }), id: `reference-${index}` };
+                });
+                harness.project.connections = images.map((image) => ({ id: `${image.id}-source`, fromNodeId: image.id, toNodeId: "source", kind: "input" }));
+                harness.requestVideo.mockResolvedValue({});
+                harness.storeVideo.mockResolvedValue({ url: "http://127.0.0.1:8188/view?filename=result.mp4", width: 640, height: 360, bytes: 1, mimeType: "video/mp4" });
+                await mount(makeNode(CanvasNodeType.Video, {
+                    status: action === "repeat" ? "success" : "error",
+                    content: action === "repeat" ? "http://127.0.0.1:8188/view?filename=original.mp4" : undefined,
+                    effectivePrompt: "测试提示词", videoMode,
+                    generationReferences: images.map((image, index) => ({ nodeId: image.id, kind: "image", url: imageUrls[index] })),
+                }), images);
+                await act(async () => {
+                    if (action === "repeat") await harness.generateRef.current("source", "video", "测试提示词", "repeat");
+                    else { const props = harness.nodeProps.get("source")!; await props.onRetry(props.data); }
+                });
+                expect(harness.requestVideo).toHaveBeenCalledTimes(1);
+                const [config, , references, options] = harness.requestVideo.mock.calls[0];
+                expect(config.videoMode).toBe(videoMode);
+                expect(options.videoMode).toBe(videoMode);
+                expect(references).toEqual(images.map((image, index) => expect.objectContaining({ id: image.id, dataUrl: imageUrls[index] })));
+                expect(options.firstFrame).toEqual(videoMode === "frame" ? references[0] : undefined);
+                expect(options.lastFrame).toEqual(videoMode === "frame" ? references[1] : undefined);
+            });
+        }
+    }
+});
+
 const originalVideo = "http://127.0.0.1:8188/view?filename=original.mp4";
 const referenceImage = "data:image/png;base64,AA==";
 const toolPrompt = "修复面部细节";
