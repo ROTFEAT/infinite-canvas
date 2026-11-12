@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { canvasThemes } from "@/lib/canvas-theme";
+import { defaultConfig, encodeChannelModel } from "@/stores/use-config-store";
 import {
+    VideoSettingsPanel,
+    type VideoSettingsPanelProps,
     extractVideoSizeTiers,
     normalizeVideoSizeValue,
     parseVideoSize,
@@ -89,5 +95,59 @@ describe("Video Settings Panel DSL & Sizing Helpers", () => {
         expect(videoSecondsLabel(20, videoMinimaxH3OmniProfile)).toBe("15s");
         // Invalid falls back to profile default 5s
         expect(videoSecondsLabel("invalid", videoMinimaxH3OmniProfile)).toBe("5s");
+    });
+});
+
+
+describe.each([true, false])("Video Settings Panel badge (showTitle=%s)", (showTitle) => {
+    const customName = "H3 REF2VA · 人物多素材参考 · 20步";
+    const customModel = encodeChannelModel("local-comfyui", customName);
+
+    beforeEach(() => vi.stubGlobal("React", React));
+    afterEach(() => vi.unstubAllGlobals());
+
+    function badge(props: Partial<VideoSettingsPanelProps> = {}) {
+        const host = document.createElement("div");
+        host.innerHTML = renderToStaticMarkup(React.createElement(VideoSettingsPanel, {
+            theme: canvasThemes.light,
+            showTitle,
+            ...props,
+        }));
+        return host.firstElementChild?.firstElementChild?.lastElementChild?.textContent;
+    }
+
+    it("shows the custom config videoModel even when videoMode supplies fallback capabilities", () => {
+        expect(badge({
+            videoMode: "omni",
+            config: { ...defaultConfig, videoModel: customModel, model: videoMinimaxH3FrameProfile.id },
+        })).toBe(customName);
+    });
+
+    it("shows an explicit custom modelId ahead of config models", () => {
+        expect(badge({
+            modelId: customModel,
+            config: { ...defaultConfig, videoModel: videoMinimaxH3FrameProfile.id },
+        })).toBe(customName);
+    });
+
+    it("uses config.model when config.videoModel is empty", () => {
+        expect(badge({ config: { ...defaultConfig, videoModel: "", model: customModel } })).toBe(customName);
+    });
+
+    it("preserves built-in profile names for channel-qualified model IDs", () => {
+        expect(badge({ modelId: encodeChannelModel("local-comfyui", videoMinimaxH3FrameProfile.id) }))
+            .toBe(videoMinimaxH3FrameProfile.name);
+    });
+
+    it("shows the explicit built-in config identity even with another videoMode", () => {
+        expect(badge({
+            videoMode: "omni",
+            config: { ...defaultConfig, videoModel: videoMinimaxH3FrameProfile.id },
+        })).toBe(videoMinimaxH3FrameProfile.name);
+    });
+
+    it("keeps the existing mode profile fallback without an explicit model", () => {
+        expect(badge({ videoMode: "frame" })).toBe(videoMinimaxH3FrameProfile.name);
+        expect(badge()).toBe(videoMinimaxH3OmniProfile.name);
     });
 });

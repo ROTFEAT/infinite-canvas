@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { type CanvasTheme } from "@/lib/canvas-theme";
-import { type AiConfig } from "@/stores/use-config-store";
+import { modelOptionName, type AiConfig } from "@/stores/use-config-store";
 import {
     getModelProfile,
     resolveVideoModelIdForMode,
@@ -81,6 +81,8 @@ export function VideoSettingsPanel({
     // 动态解析绑定的工作流模型 Profile
     const effectiveModelId = modelId || (videoMode === "frame" ? "frame-video-minimax-h3-fp8-4step-pdmd" : videoMode === "omni" ? "omni-video-minimax-h3-fp8-4step-pdmd" : undefined) || config?.videoModel || config?.model;
     const profile = getModelProfile(effectiveModelId) || videoMinimaxH3OmniProfile;
+    const selectedModelId = modelId || config?.videoModel || config?.model;
+    const modelLabel = selectedModelId ? (getModelProfile(selectedModelId)?.name || modelOptionName(selectedModelId)) : profile.name;
 
     const currentMode: "omni" | "frame" = videoMode || (profile.category === "frameVideo" ? "frame" : (config?.videoMode === "frame" ? "frame" : "omni"));
 
@@ -138,12 +140,12 @@ export function VideoSettingsPanel({
                     <div className="flex items-center justify-between">
                         <span className="text-base font-semibold">{t("settingsPanels.video.title")}</span>
                         <span className="rounded bg-black/5 dark:bg-white/10 px-1.5 py-0.5 text-[11px] font-medium opacity-70">
-                            {profile.name}
+                            {modelLabel}
                         </span>
                     </div>
                 ) : (
                     <div className="flex items-center justify-between px-0.5 text-[11px] font-medium opacity-70">
-                        <span>{profile.name}</span>
+                        <span>{modelLabel}</span>
                     </div>
                 )}
 
